@@ -1,7 +1,7 @@
 //! Ollama provider — local, privacy-first.
 
 use crate::config::OllamaConfig;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
 pub struct OllamaProvider {
@@ -66,7 +66,19 @@ impl OllamaProvider {
             .json(&body)
             .send()
             .await
-            .with_context(|| format!("POST {endpoint}"))?;
+            .map_err(|e| {
+                if e.is_connect() || e.is_timeout() {
+                    anyhow!(
+                        "cannot reach Ollama at {}.\n\
+                         Ensure Ollama is installed and running:\n  \
+                         https://ollama.com\n  \
+                         `ollama serve`",
+                        self.url
+                    )
+                } else {
+                    anyhow!("POST {endpoint}: {e}")
+                }
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let txt = resp.text().await.unwrap_or_default();

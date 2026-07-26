@@ -41,10 +41,13 @@ in the JSON schema required.\n\n```diff\n{compressed}\n```"
 /// We keep up to ~8 KB per file and drop "Binary files" lines.
 fn compress_diff(diff: &str) -> String {
     const MAX_BYTES_PER_FILE: usize = 8_000;
-    let mut out = String::with_capacity(diff.len());
+    const MAX_TOTAL_BYTES: usize = 30_000;
+    let capacity = diff.len().min(MAX_TOTAL_BYTES);
+    let mut out = String::with_capacity(capacity);
     let mut current_size = 0usize;
     let mut current_buf = String::new();
     let mut current_header = String::new();
+    let mut total_truncated = false;
 
     for line in diff.lines() {
         if line.starts_with("diff --git") {
@@ -52,6 +55,10 @@ fn compress_diff(diff: &str) -> String {
                 out.push_str(&current_header);
                 out.push_str(&truncate(&current_buf, MAX_BYTES_PER_FILE));
                 out.push('\n');
+                if out.len() >= MAX_TOTAL_BYTES {
+                    total_truncated = true;
+                    break;
+                }
             }
             current_header.clear();
             current_header.push_str(line);
@@ -71,10 +78,15 @@ fn compress_diff(diff: &str) -> String {
             current_size += line.len() + 1;
         }
     }
-    if !current_buf.is_empty() {
+    if !current_buf.is_empty() && !total_truncated {
         out.push_str(&current_header);
-        let truncated = truncate(&current_buf, MAX_BYTES_PER_FILE);
-        out.push_str(&truncated);
+        out.push_str(&truncate(&current_buf, MAX_BYTES_PER_FILE));
+        if out.len() >= MAX_TOTAL_BYTES {
+            total_truncated = true;
+        }
+    }
+    if total_truncated {
+        out.push_str("\n... [diff truncated at ~30 KB, commit in smaller batches] ...\n");
     }
     out
 }
@@ -104,5 +116,25 @@ mod tests {
         let compressed = compress_diff(&big);
         assert!(compressed.len() < big.len());
         assert!(compressed.contains("[truncated"));
+    }
+
+    #[test]
+    fn compress_truncates_global_limit() {
+        let mut big = String::new();
+        for i in 0..6 {
+            big.push_str(&format!(
+                "diff --git a/file{i} b/file{i}\n{}\n",
+                "x".repeat(7_000)
+            ));
+        }
+        let compressed = compress_diff(&big);
+        assert!(
+            compressed.len() < big.len(),
+            "global truncation should reduce size"
+        );
+        assert!(
+            compressed.contains("commit in smaller batches"),
+            "global truncation message should be present"
+        );
     }
 }

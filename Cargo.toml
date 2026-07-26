@@ -5,6 +5,9 @@ edition = "2021"
 description = "Generates perfect, atomic Git commits using AI — fast, local, reliable"
 license = "MIT"
 repository = "https://github.com/Mohameddhiab/aicommit"
+homepage = "https://github.com/Mohameddhiab/aicommit"
+documentation = "https://github.com/Mohameddhiab/aicommit#readme"
+readme = "README.md"
 keywords = ["git", "ai", "cli", "commit", "developer-tools"]
 categories = ["command-line-utilities", "development-tools"]
 

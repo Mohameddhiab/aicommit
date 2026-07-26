@@ -7,8 +7,6 @@
 //!   4. Global config: ~/.aicommit.toml
 //!   5. Hardcoded defaults
 
-#![allow(dead_code)]
-
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -17,6 +15,7 @@ use std::path::PathBuf;
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderKind {
+    Mock,
     Ollama,
     Openai,
     Anthropic,
@@ -30,6 +29,7 @@ pub enum ProviderKind {
 impl ProviderKind {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Mock => "mock",
             Self::Ollama => "ollama",
             Self::Openai => "openai",
             Self::Anthropic => "anthropic",
@@ -44,6 +44,7 @@ impl ProviderKind {
     /// Environment variable read for the API key of this provider.
     pub fn env_var(self) -> Option<&'static str> {
         match self {
+            Self::Mock => None,
             Self::Ollama => None,
             Self::Openai => Some("OPENAI_API_KEY"),
             Self::Anthropic => Some("ANTHROPIC_API_KEY"),
@@ -68,6 +69,7 @@ impl std::str::FromStr for ProviderKind {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self> {
         match s.to_ascii_lowercase().as_str() {
+            "mock" => Ok(Self::Mock),
             "ollama" => Ok(Self::Ollama),
             "openai" => Ok(Self::Openai),
             "anthropic" => Ok(Self::Anthropic),
@@ -86,7 +88,7 @@ pub struct ProviderConfig {
     pub default: Option<ProviderKind>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OllamaConfig {
     #[serde(default = "default_ollama_url")]
     pub url: String,
@@ -99,6 +101,15 @@ fn default_ollama_url() -> String {
 }
 fn default_ollama_model() -> String {
     "qwen2.5-coder:7b".to_string()
+}
+
+impl Default for OllamaConfig {
+    fn default() -> Self {
+        Self {
+            url: default_ollama_url(),
+            model: default_ollama_model(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -153,6 +164,17 @@ pub struct Config {
     pub ollama: OllamaConfig,
     pub remote: RemoteProviderConfig,
     pub commit: CommitConfig,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            provider: ProviderKind::Mock,
+            ollama: OllamaConfig::default(),
+            remote: RemoteProviderConfig::default(),
+            commit: CommitConfig::default(),
+        }
+    }
 }
 
 /// Load and merge configuration from all sources.
@@ -264,6 +286,7 @@ fn env_api_key(provider: ProviderKind) -> Option<String> {
 
 fn remote_section(file: &ConfigFile, provider: ProviderKind) -> RemoteProviderConfig {
     match provider {
+        ProviderKind::Mock => RemoteProviderConfig::default(),
         ProviderKind::Ollama => RemoteProviderConfig::default(),
         ProviderKind::Openai => file.openai.clone(),
         ProviderKind::Anthropic => file.anthropic.clone(),
@@ -370,6 +393,7 @@ fn write_api_key(provider: ProviderKind, key: &str) -> Result<()> {
         ProviderKind::Mistral => file.mistral.api_key = Some(key.to_string()),
         ProviderKind::Gemini => file.gemini.api_key = Some(key.to_string()),
         ProviderKind::Openrouter => file.openrouter.api_key = Some(key.to_string()),
+        ProviderKind::Mock => return Err(anyhow!("Mock provider does not need an API key")),
         ProviderKind::Ollama => return Err(anyhow!("Ollama does not need an API key")),
     }
     let serialized = toml::to_string_pretty(&file).context("serialize config")?;
@@ -400,6 +424,7 @@ mod tests {
     #[test]
     fn provider_kind_roundtrip() {
         for p in [
+            ProviderKind::Mock,
             ProviderKind::Ollama,
             ProviderKind::Openai,
             ProviderKind::Anthropic,

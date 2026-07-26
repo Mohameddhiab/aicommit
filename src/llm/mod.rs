@@ -1,16 +1,17 @@
 pub mod anthropic;
 pub mod gemini;
+pub mod mock;
 pub mod ollama;
 pub mod openai_compat;
 
 use crate::config::{Config, ProviderKind};
-use crate::parser::CommitMessage;
 use crate::prompt;
 use anyhow::{anyhow, Context, Result};
 
 /// Concrete provider enum — each variant wraps one backend.
 /// Avoids trait-object complexity with async_trait.
 pub enum AnyProvider {
+    Mock(mock::MockProvider),
     Ollama(ollama::OllamaProvider),
     OpenAiCompat(openai_compat::OpenAiCompatProvider),
     Anthropic(anthropic::AnthropicProvider),
@@ -20,6 +21,7 @@ pub enum AnyProvider {
 impl AnyProvider {
     pub fn name(&self) -> &'static str {
         match self {
+            Self::Mock(_) => "mock",
             Self::Ollama(_) => "ollama",
             Self::OpenAiCompat(_) => "openai-compatible",
             Self::Anthropic(_) => "anthropic",
@@ -29,6 +31,7 @@ impl AnyProvider {
 
     pub async fn chat(&self, system: &str, user: &str) -> Result<String> {
         match self {
+            Self::Mock(p) => p.chat(system, user).await,
             Self::Ollama(p) => p.chat(system, user).await,
             Self::OpenAiCompat(p) => p.chat(system, user).await,
             Self::Anthropic(p) => p.chat(system, user).await,
@@ -40,6 +43,7 @@ impl AnyProvider {
 /// Build the concrete provider from the resolved config.
 pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
     match cfg.provider {
+        ProviderKind::Mock => Ok(AnyProvider::Mock(mock::MockProvider::new())),
         ProviderKind::Ollama => Ok(AnyProvider::Ollama(ollama::OllamaProvider::new(
             cfg.ollama.clone(),
         ))),
@@ -110,6 +114,35 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn retry_rejects_garbage_then_accepts_valid() {
+        let bad = "this is not JSON at all".to_string();
+        let good = r#"{"type":"fix","scope":"retry","description":"handle parse error","body":"retried once"}"#.to_string();
+        let provider = AnyProvider::Mock(mock::MockProvider::with_responses(vec![bad, good]));
+        let cfg = Config::default();
+
+        let result = generate_commit_message(&provider, "fake diff", &cfg).await;
+        assert!(result.is_ok(), "retry should succeed: {:?}", result.err());
+        let msg = result.unwrap();
+        assert_eq!(msg, "fix(retry): handle parse error\n\nretried once");
+    }
+
+    #[tokio::test]
+    async fn retry_fails_on_two_garbage_responses() {
+        let bad = "definitely not json".to_string();
+        let provider =
+            AnyProvider::Mock(mock::MockProvider::with_responses(vec![bad.clone(), bad]));
+        let cfg = Config::default();
+
+        let result = generate_commit_message(&provider, "fake diff", &cfg).await;
+        assert!(result.is_err(), "two garbage responses should fail");
+    }
+}
+
 fn default_base_url(p: ProviderKind) -> String {
     match p {
         ProviderKind::Openai => "https://api.openai.com/v1".into(),
@@ -122,6 +155,7 @@ fn default_base_url(p: ProviderKind) -> String {
 }
 
 /// High-level helper: build prompt, ask the provider, parse the response.
+/// Retries once on parse failure with a stricter prompt.
 pub async fn generate_commit_message(
     provider: &AnyProvider,
     diff: &str,
@@ -129,11 +163,31 @@ pub async fn generate_commit_message(
 ) -> Result<String> {
     let system = prompt::system_prompt(cfg);
     let user = prompt::user_prompt(diff);
+    do_generate(provider, &system, &user).await
+}
+
+async fn do_generate(provider: &AnyProvider, system: &str, user: &str) -> Result<String> {
     let raw = provider
-        .chat(&system, &user)
+        .chat(system, user)
         .await
         .context("provider chat call")?;
-    let parsed: CommitMessage =
-        crate::parser::parse_commit_message(&raw).context("parse commit message")?;
-    Ok(parsed.to_conventional())
+    match crate::parser::parse_commit_message(&raw) {
+        Ok(parsed) => Ok(parsed.to_conventional()),
+        Err(first_err) => {
+            let retry_system = format!(
+                "Your previous response was not valid JSON. \
+                 Reply with ONLY a single JSON object, no other text.\n\
+                 Schema: {{\"type\": \"<type>\", \"scope\": \"<scope>\", \
+                 \"description\": \"<description>\", \"body\": \"<body>\"}}\n\
+                 Error was: {first_err}"
+            );
+            let raw2 = provider
+                .chat(&retry_system, user)
+                .await
+                .context("provider retry call")?;
+            let parsed2 = crate::parser::parse_commit_message(&raw2)
+                .context("parse commit message after retry")?;
+            Ok(parsed2.to_conventional())
+        }
+    }
 }

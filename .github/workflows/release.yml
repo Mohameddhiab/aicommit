@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            strip: strip
+          - target: x86_64-apple-darwin
+            os: macos-13
+            strip: strip
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            strip: strip
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            strip: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare binary
+        shell: bash
+        run: |
+          BIN="aicommit"
+          SRC="target/${{ matrix.target }}/release/${BIN}"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            SRC="${SRC}.exe"
+          fi
+          ARCHIVE="aicommit-${{ matrix.target }}${{ matrix.os == 'windows-latest' && '.zip' || '.tar.gz' }}"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "$SRC" "${BIN}.exe"
+            7z a "$ARCHIVE" "${BIN}.exe"
+          else
+            tar czf "$ARCHIVE" -C target/${{ matrix.target }}/release "${BIN}"
+          fi
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          echo "ASSET_PATH=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET_PATH }}

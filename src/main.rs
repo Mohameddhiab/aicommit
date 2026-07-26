@@ -3,14 +3,9 @@
 //! Entry point: parses the CLI (clap), loads config, dispatches to the
 //! provider-agnostic workflow defined in `main.rs`.
 
-mod config;
-mod git;
-mod llm;
-mod parser;
-mod prompt;
-mod splitter;
-
+use aicommit::{config, git, interactive, llm, parser, splitter};
 use clap::{Parser, Subcommand};
+use colored::Colorize;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -29,9 +24,17 @@ pub struct Cli {
     #[arg(short, long)]
     pub interactive: bool,
 
+    /// Dry-run: generate and print the message(s) without committing.
+    #[arg(short = 'n', long, alias = "print-only")]
+    pub dry_run: bool,
+
+    /// Disable auto-staging (aicommit stages all changes by default).
+    #[arg(long)]
+    pub no_stage: bool,
+
     /// AI provider to use. Auto-detected if omitted.
     /// One of: ollama, openai, anthropic, groq, deepseek, mistral, gemini, openrouter.
-    #[arg(short, long, value_parser = ["ollama", "openai", "anthropic", "groq", "deepseek", "mistral", "gemini", "openrouter"])]
+    #[arg(short, long, value_parser = ["mock", "ollama", "openai", "anthropic", "groq", "deepseek", "mistral", "gemini", "openrouter"])]
     pub provider: Option<String>,
 
     /// Model override (e.g. "llama3", "gpt-4o").
@@ -60,7 +63,7 @@ pub enum Command {
         api_key: Option<String>,
 
         /// Provider the key belongs to.
-        #[arg(long, value_parser = ["ollama", "openai", "anthropic", "groq", "deepseek", "mistral", "gemini", "openrouter"])]
+        #[arg(long, value_parser = ["mock", "ollama", "openai", "anthropic", "groq", "deepseek", "mistral", "gemini", "openrouter"])]
         provider: Option<String>,
 
         /// Print the resolved configuration (merged env + file + CLI).
@@ -70,9 +73,25 @@ pub enum Command {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     let cli = Cli::parse();
-    run(cli).await
+    if let Err(e) = run(cli).await {
+        print_error(&e);
+        std::process::exit(1);
+    }
+}
+
+fn print_error(err: &anyhow::Error) {
+    eprintln!("{} {}", "✗".red().bold(), "aicommit error".red().bold());
+    let msg = format!("{err:#}");
+    for line in msg.lines() {
+        if line.contains("Caused by:") {
+            eprintln!("  {}", line.dimmed());
+        } else {
+            eprintln!("  {line}");
+        }
+    }
+    eprintln!("\n  {} Run `aicommit --help` for usage.", "?".blue().bold());
 }
 
 /// Dispatch entry. Separated from `main` for testability.
@@ -83,15 +102,16 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             provider,
             show,
         }) => config::handle_config_command(api_key, provider, show).await,
-        None => crate::commit_workflow(cli).await,
+        None => commit_workflow(cli).await,
     }
 }
 
 /// Default workflow:
 /// 1. Load & merge config (env > file > defaults).
-/// 2. Read staged diff via git2.
-/// 3. (optionally) split into logical groups.
-/// 4. For each group: build prompt, call provider, parse message, commit.
+/// 2. Optionally auto-stage all changes.
+/// 3. Read staged diff via git2.
+/// 4. (optionally) split into logical groups.
+/// 5. For each group: build prompt, call provider, parse message, commit (unless dry-run).
 async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
     let cfg = config::load(
         cli.provider.clone(),
@@ -99,41 +119,87 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
         cli.lang.clone(),
         cli.api_key.clone(),
     )?;
-    let diff = git::staged_diff()?;
+
+    let mut diff = git::staged_diff()?;
+    if diff.is_empty() && !cli.no_stage {
+        git::stage_all()?;
+        diff = git::staged_diff()?;
+    }
     if diff.is_empty() {
-        println!("Nothing staged. Use `git add` first.");
+        println!(
+            "{} Nothing staged. Make some changes and `git add` first.",
+            "●".yellow()
+        );
         return Ok(());
     }
 
     let provider = llm::build_provider(&cfg)?;
-    println!("Using provider: {}", provider.name());
+    let line_count = diff.lines().count();
+    println!(
+        "{} {} — {} lines to analyze",
+        "▶".cyan(),
+        provider.name(),
+        line_count
+    );
 
     if cli.single || splitter::should_treat_as_single(&diff) {
         let msg = llm::generate_commit_message(&provider, &diff, &cfg).await?;
         let parsed = parser::parse_commit_message(&msg)?;
         let final_msg = if cli.interactive {
-            parser::interactive_edit(&parsed)?
+            interactive::edit_message(&parsed.to_conventional())?
         } else {
             parsed.to_conventional()
         };
-        git::commit(&final_msg, None)?;
-        println!("Committed: {final_msg}");
+        do_commit(&final_msg, None, cli.dry_run)?;
         return Ok(());
     }
 
     let groups = splitter::group_by_directory(&diff, cfg.commit.max_commits)?;
-    for group in &groups {
-        let gdiff = git::diff_for_group(group)?;
-        let msg = llm::generate_commit_message(&provider, &gdiff, &cfg).await?;
-        let parsed = parser::parse_commit_message(&msg)?;
-        let final_msg = if cli.interactive {
-            parser::interactive_edit(&parsed)?
-        } else {
-            parsed.to_conventional()
-        };
-        let commit_paths: Vec<PathBuf> = group.paths.iter().map(PathBuf::from).collect();
-        git::commit(&final_msg, Some(&commit_paths))?;
-        println!("Committed: {final_msg}");
+    if cli.interactive {
+        let mut msgs = Vec::new();
+        for group in &groups {
+            let gdiff = git::diff_for_group(group)?;
+            let glines = gdiff.lines().count();
+            println!(
+                "  {} Group '{}' — {glines} lines to analyze",
+                "▸".cyan(),
+                group.name
+            );
+            let msg = llm::generate_commit_message(&provider, &gdiff, &cfg).await?;
+            msgs.push(msg);
+        }
+        let selected = interactive::select_commits(&groups, &msgs);
+        for &idx in &selected {
+            let parsed = parser::parse_commit_message(&msgs[idx])?;
+            let final_msg = interactive::edit_message(&parsed.to_conventional())?;
+            let commit_paths: Vec<PathBuf> = groups[idx].paths.iter().map(PathBuf::from).collect();
+            do_commit(&final_msg, Some(&commit_paths), cli.dry_run)?;
+        }
+    } else {
+        for group in &groups {
+            let gdiff = git::diff_for_group(group)?;
+            let glines = gdiff.lines().count();
+            println!(
+                "  {} Group '{}' — {glines} lines to analyze",
+                "▸".cyan(),
+                group.name
+            );
+            let msg = llm::generate_commit_message(&provider, &gdiff, &cfg).await?;
+            let parsed = parser::parse_commit_message(&msg)?;
+            let final_msg = parsed.to_conventional();
+            let commit_paths: Vec<PathBuf> = group.paths.iter().map(PathBuf::from).collect();
+            do_commit(&final_msg, Some(&commit_paths), cli.dry_run)?;
+        }
+    }
+    Ok(())
+}
+
+fn do_commit(message: &str, paths: Option<&[PathBuf]>, dry_run: bool) -> anyhow::Result<()> {
+    if dry_run {
+        println!("{} Would commit: {message}", "✔".green());
+    } else {
+        git::commit(message, paths)?;
+        println!("{} Committed: {message}", "✔".green());
     }
     Ok(())
 }

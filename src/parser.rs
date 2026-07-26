@@ -59,6 +59,17 @@ fn parse_json(raw: &str) -> Result<CommitMessage> {
 }
 
 fn extract_json_block(s: &str) -> &str {
+    let s = s.trim();
+    let s = if s.starts_with("```") {
+        let without_fence = s.trim_start_matches("```json").trim_start_matches("```");
+        if let Some(end) = without_fence.rfind("```") {
+            without_fence[..end].trim()
+        } else {
+            without_fence.trim()
+        }
+    } else {
+        s
+    };
     if let Some(start) = s.find('{') {
         if let Some(end) = s.rfind('}') {
             return &s[start..=end];
@@ -105,24 +116,10 @@ fn validate(msg: CommitMessage) -> Result<CommitMessage> {
     if msg.description.is_empty() {
         bail!("empty description");
     }
-    if msg.description.len() > 100 {
+    if msg.description.len() > 120 {
         bail!("description too long ({} chars)", msg.description.len());
     }
     Ok(msg)
-}
-
-/// Interactive edit (used with `--interactive`).
-pub fn interactive_edit(msg: &CommitMessage) -> Result<String> {
-    use dialoguer::Input;
-    let prompt = format!(
-        "Commit message [{}({}): {}]",
-        msg.kind, msg.scope, msg.description
-    );
-    let edited: String = Input::new()
-        .with_prompt(&prompt)
-        .with_initial_text(msg.to_conventional())
-        .interact_text()?;
-    Ok(edited)
 }
 
 #[cfg(test)]
@@ -174,6 +171,23 @@ mod tests {
     fn rejects_empty_description() {
         let raw = r#"{"type":"feat","scope":"x","description":"","body":""}"#;
         let _ = parse_commit_message(raw).unwrap_err();
+    }
+
+    #[test]
+    fn parse_json_with_markdown_fence() {
+        let raw = "```json\n{\"type\":\"feat\",\"scope\":\"cli\",\"description\":\"add markdown fence support\",\"body\":\"\"}\n```";
+        let msg = parse_commit_message(raw).unwrap();
+        assert_eq!(msg.kind, "feat");
+        assert_eq!(msg.scope, "cli");
+        assert_eq!(msg.description, "add markdown fence support");
+    }
+
+    #[test]
+    fn parse_json_with_markdown_fence_no_lang() {
+        let raw = "```\n{\"type\":\"fix\",\"scope\":\"db\",\"description\":\"handle connection pool leak\",\"body\":\"\"}\n```";
+        let msg = parse_commit_message(raw).unwrap();
+        assert_eq!(msg.kind, "fix");
+        assert_eq!(msg.description, "handle connection pool leak");
     }
 
     #[test]

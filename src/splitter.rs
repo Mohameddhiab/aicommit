@@ -1,7 +1,5 @@
 //! Atomic-commit splitter: groups staged files by logical domain (directory).
 
-#![allow(dead_code)]
-
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
@@ -87,7 +85,7 @@ pub fn group_by_directory(diff: &str, max_groups: usize) -> Result<Vec<Group>> {
     }
 
     // Reorder so largest groups come first (nicer UX).
-    groups.sort_by(|a, b| b.paths.len().cmp(&a.paths.len()));
+    groups.sort_by_key(|b| std::cmp::Reverse(b.paths.len()));
     Ok(groups)
 }
 
