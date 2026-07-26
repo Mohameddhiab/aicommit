@@ -1,0 +1,81 @@
+//! Ollama provider — local, privacy-first.
+
+use crate::config::OllamaConfig;
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+
+pub struct OllamaProvider {
+    url: String,
+    model: String,
+    client: reqwest::Client,
+}
+
+impl OllamaProvider {
+    pub fn new(cfg: OllamaConfig) -> Self {
+        Self {
+            url: cfg.url.trim_end_matches('/').to_string(),
+            model: cfg.model,
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("reqwest client"),
+        }
+    }
+
+    pub async fn chat(&self, system: &str, user: &str) -> Result<String> {
+        #[derive(Serialize)]
+        struct ChatRequest<'a> {
+            model: &'a str,
+            stream: bool,
+            format: &'a str,
+            messages: Vec<ChatMessage<'a>>,
+        }
+        #[derive(Serialize)]
+        struct ChatMessage<'a> {
+            role: &'a str,
+            content: &'a str,
+        }
+        #[derive(Deserialize)]
+        struct ChatResponse {
+            message: Option<RespMessage>,
+        }
+        #[derive(Deserialize)]
+        struct RespMessage {
+            content: String,
+        }
+
+        let body = ChatRequest {
+            model: &self.model,
+            stream: false,
+            format: "json",
+            messages: vec![
+                ChatMessage {
+                    role: "system",
+                    content: system,
+                },
+                ChatMessage {
+                    role: "user",
+                    content: user,
+                },
+            ],
+        };
+        let endpoint = format!("{}/api/chat", self.url);
+        let resp = self
+            .client
+            .post(&endpoint)
+            .json(&body)
+            .send()
+            .await
+            .with_context(|| format!("POST {endpoint}"))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let txt = resp.text().await.unwrap_or_default();
+            anyhow::bail!("ollama returned {status}: {txt}");
+        }
+        let parsed: ChatResponse = resp.json().await.context("parse ollama response")?;
+        parsed
+            .message
+            .map(|m| m.content)
+            .ok_or_else(|| anyhow::anyhow!("ollama response missing message"))
+    }
+}

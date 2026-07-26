@@ -1,0 +1,6 @@
+# Tests fixtures directory.
+#
+# Real git repos used for integration testing git.rs, splitter.rs, and the
+# end-to-end commit workflow. Repos are created on the fly by the test suite
+# using `tempfile` + git2 — this directory only hosts static fixture assets
+# (sample file contents, expected diffs).

@@ -1,0 +1,19 @@
+/target
+**/*.rs.bk
+Cargo.lock
+*.pdb
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Env / secrets
+.env
+.env.local

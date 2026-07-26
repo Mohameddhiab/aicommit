@@ -1,0 +1,50 @@
+# Example configuration for aicommit.
+# Place at the root of your project, or copy to ~/.aicommit.toml (global).
+
+[provider]
+default = "ollama"  # ollama | openai | anthropic | groq | deepseek | mistral | gemini | openrouter
+
+[ollama]
+url = "http://localhost:11434"
+model = "qwen2.5-coder:7b"
+
+[openai]
+# api_key is read from OPENAI_API_KEY env var by default.
+# Override here (not recommended for shared repos):
+# api_key = "sk-..."
+base_url = "https://api.openai.com/v1"
+model = "gpt-4o"
+
+[anthropic]
+# api_key is read from ANTHROPIC_API_KEY env var by default.
+base_url = "https://api.anthropic.com/v1"
+model = "claude-3-5-sonnet-20241022"
+
+[groq]
+# api_key is read from GROQ_API_KEY env var by default.
+base_url = "https://api.groq.com/openai/v1"
+model = "llama-3.3-70b-versatile"
+
+[deepseek]
+# api_key is read from DEEPSEEK_API_KEY env var by default.
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-coder"
+
+[mistral]
+# api_key is read from MISTRAL_API_KEY env var by default.
+base_url = "https://api.mistral.ai/v1"
+model = "codestral-latest"
+
+[gemini]
+# api_key is read from GOOGLE_API_KEY env var by default.
+base_url = "https://generativelanguage.googleapis.com/v1beta"
+model = "gemini-2.0-flash-exp"
+
+[openrouter]
+# api_key is read from OPENROUTER_API_KEY env var by default.
+base_url = "https://openrouter.ai/api/v1"
+model = "anthropic/claude-3.5-sonnet"
+
+[commit]
+language = "en"  # "en" | "fr" | "es" | "de" | ...
+max_commits = 3  # max atomic commits when splitting
