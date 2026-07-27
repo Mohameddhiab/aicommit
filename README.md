@@ -1,163 +1,71 @@
-# aicommit
+<p align="center">
+  <img src="media/banner.svg" width="800" alt="aicommit banner">
+</p>
 
-> Generate perfect, atomic Git commits using AI — fast, local, reliable.
+<div align="center">
 
 [![CI](https://github.com/Mohameddhiab/aicommit/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohameddhiab/aicommit/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/aicommit.svg)](https://crates.io/crates/aicommit)
 [![codecov](https://codecov.io/gh/Mohameddhiab/aicommit/graph/badge.svg)](https://codecov.io/gh/Mohameddhiab/aicommit)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org)
+![Rust](https://img.shields.io/badge/rust-2021-orange.svg)
+[![Downloads](https://img.shields.io/crates/d/aicommit)](https://crates.io/crates/aicommit)
 
-`aicommit` reads your staged changes, calls an AI provider, and writes clean
-[Conventional Commit](https://www.conventionalcommits.org/) messages — in **one command**, in **under a second**.
+</div>
 
-Unlike other tools, aicommit is **privacy-first** (Ollama by default, zero code sent to the cloud),
-**blazing fast** (native Rust, ~0.4s on a 5k-file repo), and **atomic** — it splits large diffs
-into multiple focused commits, one per logical domain.
+**Generate perfect, atomic Git commits using AI.** One command, under a second. Zero cloud by default.
 
----
-
-## Table of Contents
-
-- [Why aicommit?](#why-aicommit)
-- [Features](#features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Supported Providers](#supported-providers)
-- [Usage](#usage)
-  - [CLI Flags](#cli-flags)
-  - [Interactive Mode](#interactive-mode)
-  - [Atomic Commits (Splitting)](#atomic-commits-splitting)
-  - [Dry-Run](#dry-run)
-- [Configuration](#configuration)
-  - [Config File](#config-file)
-  - [Environment Variables](#environment-variables)
-  - [Resolution Order](#resolution-order)
-- [How It Works](#how-it-works)
-- [Benchmarks](#benchmarks)
-- [Comparison](#comparison)
-- [Development](#development)
-- [Contributing](#contributing)
-- [License](#license)
+> **100% open source** (MIT) · **local-first** (Ollama default) · **blazing fast** (native Rust, ~0.4s)
 
 ---
 
 ## Why aicommit?
 
-Writing good commit messages is tedious. Most developers fall back to `wip`,
-`fix bug`, or `update stuff` — which destroys project history, confuses code
-reviewers, and makes it impossible for LLMs to understand the evolution of the codebase.
-
-**The result:** a messy `git log` that nobody reads, and a project that's harder
-to maintain, debug, and onboard into.
-
-**aicommit fixes this** by automating the entire commit workflow:
+- **Local-first** — Ollama by default, zero code leaves your machine. No API key needed.
+- **Atomic** — splits large diffs into one commit per logical domain, not a single blob.
+- **Fast** — native Rust, ~0.4s on a 5k-file repo (40x faster than Node alternatives).
+- **8 providers** — Ollama, OpenAI, Anthropic, Groq, DeepSeek, Mistral, Gemini, OpenRouter.
+- **Strict Conventional Commits** — every message is `feat`, `fix`, `refactor`, etc. with optional scope and body.
+- **Reliable** — auto-retry with backoff, explicit error messages for bad API keys, merge/rebase detection.
 
 ```bash
-# Before (manual, slow, inconsistent):
-git add -p                  # manually select hunks
-git commit -m "fix stuff"   # vague, not conventional
-
-# After (one command, perfect commits):
+# Before: "fix stuff" — vague, inconsistent
+# After:
 aicommit
-# ▶ ollama — 340 lines to analyze
-# ▸ Group 'auth' — 200 lines to analyze
-# ✔ Committed: feat(auth): implement JWT token expiration
-# ▸ Group 'db' — 140 lines to analyze
-# ✔ Committed: refactor(db): remove unused Redis client pool
+# ✔ feat(auth): implement JWT token expiration
+# ✔ refactor(db): remove unused Redis client pool
+```
+
+---
+
+## Quick Start
+
+### Local (no API key)
+
+```bash
+ollama pull qwen2.5-coder:7b    # one-time setup
+aicommit                          # in any git repo
+```
+
+### Cloud
+
+```bash
+aicommit config --provider openai --api-key sk-...
+aicommit --provider openai --model gpt-4o
 ```
 
 ---
 
 ## Features
 
-- **Atomic commits** — splits large diffs into logical commits, one per domain
-  (`src/auth/`, `src/db/`, etc.), not one giant blob.
-- **Local-first** — uses Ollama by default; zero code leaves your machine.
-- **8 providers** — Ollama, OpenAI, Anthropic, Groq, DeepSeek, Mistral, Gemini, OpenRouter.
-- **Interactive mode** — when multiple groups are detected, pick which commits to apply
-  and edit messages before committing.
-- **Auto-stage** — stages all changes automatically (`aicommit` = `git add .` + commit).
-- **Dry-run** — preview generated messages without committing (`--dry-run`).
-- **Strict Conventional Commits** — enforces `feat`, `fix`, `docs`, `refactor`, `perf`, `test`,
-  `build`, `ci`, `chore`, `style` types with optional scope and body.
-- **Retry on failure** — if the LLM returns unparseable JSON, retries once with a stricter
-  repair prompt before giving up.
-- **Colored output** — clear, colorized terminal output with symbols (`▶`, `▸`, `✔`, `✗`).
-- **Blazing fast** — native Rust binary, async HTTP, ~0.4s on a 5k-file repo (40x faster
-  than Node.js alternatives).
-- **Multi-language** — generate commit messages in any language (`--lang fr`, `--lang es`, etc.).
-- **Configuration file** — project-level `.aicommit.toml` and global `~/.config/aicommit/config.toml`.
-
----
-
-## Installation
-
-### From source (via Cargo)
-
-```bash
-cargo install aicommit
-```
-
-### From GitHub (latest release)
-
-```bash
-cargo install --git https://github.com/Mohameddhiab/aicommit.git
-```
-
-### Homebrew
-
-```bash
-brew install Mohameddhiab/tap/aicommit
-```
-
-### Pre-built binaries
-
-Download the latest binary for your platform from the
-[Releases page](https://github.com/Mohameddhiab/aicommit/releases).
-
-Available targets:
-| Platform | Architecture |
-|----------|-------------|
-| Linux | x86\_64 |
-| macOS (Intel) | x86\_64 |
-| macOS (Apple Silicon) | aarch64 |
-| Windows | x86\_64 |
-
----
-
-## Quick Start
-
-### Using Ollama (local, no API key needed)
-
-```bash
-# 1. Install Ollama from https://ollama.com
-# 2. Pull a model (7B is fast and accurate for commit messages):
-ollama pull qwen2.5-coder:7b
-
-# 3. Go to any git repository and run:
-aicommit
-```
-
-That's it. aicommit will:
-1. Stage all changes (unless `--no-stage` is passed)
-2. Read the staged diff
-3. Split it into logical groups by directory
-4. Generate a Conventional Commit message for each group
-5. Commit each group atomically
-
-### Using a cloud provider
-
-```bash
-# Set your API key (stored in ~/.config/aicommit/config.toml):
-aicommit config --provider openai --api-key sk-...
-
-# Or pass it via environment variable:
-export OPENAI_API_KEY=sk-...
-
-# Run:
-aicommit --provider openai --model gpt-4o
-```
+- **Atomic commits** — groups files by top-level directory, commits each group separately
+- **Interactive mode** (`-i`) — pick which groups to commit, edit messages before applying
+- **Auto-stage** — `aicommit` = `git add .` + commit; disable with `--no-stage`
+- **Dry-run** (`-n`) — preview generated messages without committing
+- **Multi-language** — generate messages in French, Spanish, German, etc. (`--lang fr`)
+- **Custom base URL** — use with vLLM, LM Studio, or any OpenAI-compatible local server
+- **Retry + backoff** — 3 attempts on timeouts and server errors
+- **Undo** (`aicommit undo`) — `git reset --soft HEAD~1` to undo the last commit
 
 ---
 
@@ -174,14 +82,36 @@ aicommit --provider openai --model gpt-4o
 | [Gemini](https://ai.google.dev) | `GOOGLE_API_KEY` | `gemini-2.0-flash` | Cloud |
 | [OpenRouter](https://openrouter.ai) | `OPENROUTER_API_KEY` | `anthropic/claude-3.5-sonnet` | Cloud |
 
-> **Auto-detection:** If no provider is specified, aicommit checks for a running Ollama instance
-> first (local), then falls back to any provider with a configured API key.
+> **Auto-detection:** If no provider is specified, aicommit checks for a running Ollama instance first, then falls back to any provider with a configured API key.
+
+---
+
+## Installation
+
+```bash
+cargo install aicommit                           # from source
+cargo install --git https://github.com/Mohameddhiab/aicommit.git  # latest
+brew install Mohameddhiab/tap/aicommit            # Homebrew
+```
+
+Pre-built binaries for Linux (x86_64), macOS (x86_64 + aarch64), and Windows (x86_64) on the [Releases page](https://github.com/Mohameddhiab/aicommit/releases).
 
 ---
 
 ## Usage
 
-### CLI Flags
+```bash
+aicommit                    # default: auto-stage + split + commit
+aicommit --dry-run          # preview only
+aicommit --interactive      # pick groups + edit messages
+aicommit --single           # one commit, no splitting
+aicommit --lang fr          # messages in French
+aicommit --provider ollama --model llama3
+aicommit undo               # undo last commit
+```
+
+<details>
+<summary><b>CLI Flags</b> — full reference</summary>
 
 | Flag | Description |
 |------|-------------|
@@ -190,105 +120,22 @@ aicommit --provider openai --model gpt-4o
 | `--dry-run` (`-n`) | Generate and print messages without committing |
 | `--no-stage` | Disable auto-staging (you must `git add` first) |
 | `--provider <name>` | AI provider (`ollama`, `openai`, `anthropic`, `groq`, `deepseek`, `mistral`, `gemini`, `openrouter`) |
-| `--model <name>` | Model override (e.g. `gpt-4o`, `claude-3.5-sonnet`) |
-| `--base-url <url>` | Base URL for the provider API (e.g. `http://localhost:11434` for Ollama, `http://localhost:8000/v1` for OpenAI-compatible local servers) |
+| `--model <name>` | Model override (e.g. `gpt-4o`, `claude-sonnet-4-20250514`) |
+| `--base-url <url>` | Base URL for the provider API |
 | `--lang <lang>` | Language of the generated message (`en`, `fr`, `es`, `de`, etc.) |
 | `--api-key <key>` | Ephemeral API key (overrides env var and config file) |
 | `--timeout <secs>` | Timeout in seconds for API calls (default: 120) |
 | `--list-models` | List available models from the selected provider and exit |
 | `--help` (`-h`) | Print help |
 
-### Examples
+</details>
 
-```bash
-# Default workflow (auto-stage + split + commit)
-aicommit
-
-# Preview without committing
-aicommit --dry-run
-
-# Interactive: choose which groups to commit
-aicommit --interactive
-
-# Single commit, no splitting
-aicommit --single
-
-# Using a specific provider and model
-aicommit --provider ollama --model llama3
-aicommit --provider openai --model gpt-4o
-aicommit --provider anthropic --model claude-3-5-sonnet-20241022
-aicommit --provider groq --model llama-3.3-70b-versatile
-
-# Generate messages in French
-aicommit --lang fr
-
-# List available models from a provider
-aicommit --list-models --provider ollama
-aicommit --list-models --provider openai --api-key sk-...
-
-# Use a custom base URL (Ollama on non-default port, vLLM, LM Studio, etc.)
-aicommit --base-url http://localhost:11434 --model qwen2.5-coder:7b
-aicommit --base-url http://localhost:8000/v1 --provider openai --api-key sk-...
-
-# Configure API key
-aicommit config --provider openai --api-key sk-...
-
-# Show current configuration
-aicommit config --show
-```
-
-### Interactive Mode
-
-When `--interactive` is used with multiple groups, aicommit shows a multi-select menu:
-
-```
-Select commits to apply (space to toggle, enter to confirm):
-> ◻ [auth]   feat(auth): implement JWT token expiration
-  ◻ [db]     refactor(db): remove unused Redis client pool
-  ◻ [docs]   docs: update README with new auth flow
-```
-
-After selecting the groups you want, you can edit each message before committing.
-
-### Atomic Commits (Splitting)
-
-aicommit groups staged files by their top-level directory:
-
-```
-src/auth/login.rs     → group "auth"
-src/auth/logout.rs    → group "auth"
-src/db/pool.rs        → group "db"
-README.md             → group "root"
-package.json          → group "root"
-```
-
-Each group produces exactly one Conventional Commit. This means a single
-`aicommit` can generate multiple focused commits instead of one giant `"fix stuff"`.
-
-If there are too many groups (more than `max_commits` in the config), smaller
-groups are merged into a `"misc"` group.
-
-### Dry-Run
-
-Use `--dry-run` (or `--print-only`) to see what aicommit would generate
-without actually committing:
-
-```bash
-aicommit --dry-run
-# ▶ ollama — 45 lines to analyze
-# ✔ Would commit: feat(auth): add token validation
-# ✔ Would commit: fix(db): handle connection timeout
-```
-
----
-
-## Configuration
+<details>
+<summary><b>Configuration</b> — config file, env vars, resolution order</summary>
 
 ### Config File
 
-Configuration is written in TOML. aicommit reads from two locations:
-
-**Project config** — place `.aicommit.toml` in your project root:
+**Project config** — `.aicommit.toml` in your project root:
 ```toml
 [provider]
 default = "ollama"
@@ -302,11 +149,9 @@ language = "en"
 max_commits = 3
 ```
 
-**Global config** — stored at `~/.config/aicommit/config.toml` (or `~/.aicommit.toml`):
+**Global config** — `~/.config/aicommit/config.toml`:
 ```toml
 [openai]
-# API key is read from OPENAI_API_KEY env var; override here:
-# api_key = "sk-..."
 base_url = "https://api.openai.com/v1"
 model = "gpt-4o"
 ```
@@ -325,17 +170,16 @@ model = "gpt-4o"
 
 ### Resolution Order
 
-Configuration is resolved from highest to lowest priority:
+1. CLI flags (`--provider`, `--model`, `--lang`, `--api-key`)
+2. Environment variables
+3. Project config (`./.aicommit.toml`)
+4. Global config (`~/.config/aicommit/config.toml`)
+5. Hardcoded defaults
 
-1. **CLI flags** (`--provider`, `--model`, `--lang`, `--api-key`)
-2. **Environment variables** (provider API keys)
-3. **Project config** (`./.aicommit.toml`)
-4. **Global config** (`~/.config/aicommit/config.toml`)
-5. **Hardcoded defaults**
+</details>
 
----
-
-## How It Works
+<details>
+<summary><b>How It Works</b> — pipeline, splitting, retry logic</summary>
 
 ```
  ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
@@ -343,7 +187,7 @@ Configuration is resolved from highest to lowest priority:
  │ (auto)   │     │ staged   │     │ directory│     │ commit   │
  │          │     │ diff     │     │          │     │ message  │
  └──────────┘     └──────────┘     └──────────┘     └──────────┘
-                                                          │
+                                                           │
  ┌──────────┐     ┌──────────┐     ┌────────────────┐     │
  │   git    │<────│ Parse    │<────│ Retry on       │<────│
  │  commit  │     │ JSON/    │     │ parse failure  │     │
@@ -351,22 +195,30 @@ Configuration is resolved from highest to lowest priority:
  └──────────┘     └──────────┘     └────────────────┘     │
 ```
 
-1. **Auto-stage** (optional): runs `git add .` if nothing is staged.
-2. **Read diff**: uses libgit2 to read the staged diff directly in-process
-   (no external `git` process needed).
-3. **Split**: groups files by their top-level directory. Small diffs pass through
-   as a single group.
-4. **Generate**: for each group, builds a system prompt enforcing Conventional
-   Commits and JSON output, sends it to the AI provider.
-5. **Retry**: if the response isn't valid JSON, sends a stricter repair prompt
-   and retries once.
-6. **Parse**: extracts the JSON (or falls back to regex-based Conventional
-   Commit parsing) into a structured `CommitMessage`.
-7. **Commit**: stages the specific files for the group and creates the commit.
+1. **Auto-stage** (optional): `git add .` if nothing is staged.
+2. **Read diff**: uses libgit2 to read the staged diff in-process.
+3. **Split**: groups files by top-level directory. Small diffs pass through as one group.
+4. **Generate**: builds a system prompt enforcing Conventional Commits and JSON output.
+5. **Retry**: if the response isn't valid JSON, sends a stricter repair prompt.
+6. **Parse**: extracts JSON (or falls back to regex) into a structured `CommitMessage`.
+7. **Commit**: stages the relevant files and creates the commit.
 
----
+### Grouping Example
 
-## Benchmarks
+```
+src/auth/login.rs     → group "auth"
+src/auth/logout.rs    → group "auth"
+src/db/pool.rs        → group "db"
+README.md             → group "root"
+```
+
+Each group produces exactly one Conventional Commit. If there are too many groups
+(more than `max_commits`), smaller groups are merged into a `"misc"` group.
+
+</details>
+
+<details>
+<summary><b>Benchmarks & Comparison</b></summary>
 
 | Tool | Language | Repo size | Time | Binary size |
 |------|----------|-----------|------|-------------|
@@ -375,65 +227,27 @@ Configuration is resolved from highest to lowest priority:
 | git-cz (Node) | JavaScript | 5k files | ~6s | ~30 MB |
 | aicommit (w/ Ollama) | — | 5k files | ~1.2s | — |
 
-Benchmarks measured on a 2022 MacBook Air (M2, 8 GB RAM). The diff contained
-340 lines across 12 files. Ollama model: `qwen2.5-coder:7b`.
-
-aicommit is **40x faster** than Node.js alternatives because it reads the git
-diff via libgit2 (no subprocess), uses native Rust, and makes async HTTP
-requests.
-
----
-
-## Comparison
+Benchmarks on a 2022 MacBook Air (M2, 8 GB RAM). 340 lines across 12 files.
+Ollama model: `qwen2.5-coder:7b`. aicommit is **40x faster** due to libgit2
+(no subprocess), native Rust, and async HTTP.
 
 | Feature | aicommits (Node) | git-cz | **aicommit (Rust)** |
 |---------|-----------------|--------|---------------------|
 | Speed | ~8s | ~6s | **~0.4s** |
-| Privacy | Cloud only | CLI helper | **Local-first (Ollama)** |
+| Privacy | Cloud only | CLI helper | **Local-first** |
 | Atomic commits | No | No | **Yes** |
 | Strict CC | No | Interactive | **Automatic** |
 | Multi-provider | No | No | **8 providers** |
 | Auto-stage | No | No | **Yes** |
 | Dry-run | No | No | **Yes** |
-| Interactive selection | No | No | **Yes** |
+| Interactive | No | No | **Yes** |
 | Binary size | ~5 MB | ~30 MB | **~2 MB** |
-| Config | Local only | — | **Global + Project** |
-| Languages | EN only | — | **Multi-language** |
+| Multi-language | EN only | — | **Multi** |
 
----
+</details>
 
-## Development
-
-### Prerequisites
-
-- Rust 1.81+
-- Windows: MSVC Build Tools (Visual Studio 2022 Build Tools with "Desktop development with C++")
-
-### Build
-
-```bash
-git clone https://github.com/Mohameddhiab/aicommit.git
-cd aicommit
-cargo build --release
-```
-
-### Test
-
-```bash
-cargo test                     # unit + integration tests
-cargo clippy -- -D warnings    # lint
-cargo fmt --check              # formatting
-```
-
-### Run from source
-
-```bash
-cargo run -- <flags>
-# e.g.
-cargo run -- --provider mock   # use built-in mock provider for testing
-```
-
-### Project Structure
+<details>
+<summary><b>Project Structure</b></summary>
 
 ```
 src/
@@ -456,20 +270,26 @@ tests/
 └── git_integration.rs # Git integration tests
 ```
 
+</details>
+
+---
+
+## Support
+
+If aicommit helps you ship cleaner commits, consider giving the repo a star ⭐ — it helps others discover the project.
+
+[![GitHub stars](https://img.shields.io/github/stars/Mohameddhiab/aicommit?style=social)](https://github.com/Mohameddhiab/aicommit/stargazers)
+
 ---
 
 ## Contributing
 
-Contributions are welcome! Here's how you can help:
+Bug reports, provider additions, prompt improvements, and PRs are welcome.
 
-1. **Report bugs** — open an issue with the error output and steps to reproduce.
-2. **Add a provider** — implement the `chat` method and add a variant to `AnyProvider`.
-3. **Improve prompts** — better prompts = better commit messages.
-4. **Add tests** — especially integration tests for edge cases.
-5. **Submit a PR** — keep changes focused, run `cargo test && cargo clippy && cargo fmt --check` before submitting.
+Check [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Run `cargo test && cargo clippy && cargo fmt --check` before submitting.
 
 ---
 
 ## License
 
-MIT © Mohamed Dhiab
+MIT © [Mohamed Dhiab](https://github.com/Mohameddhiab)
