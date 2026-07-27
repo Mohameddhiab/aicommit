@@ -156,10 +156,7 @@ pub async fn generate_commit_message(
 }
 
 async fn do_generate(provider: &AnyProvider, system: &str, user: &str) -> Result<String> {
-    let raw = provider
-        .chat(system, user)
-        .await
-        .context("provider chat call")?;
+    let raw = chat_with_retry(provider, system, user, 3).await?;
     match crate::parser::parse_commit_message(&raw) {
         Ok(parsed) => Ok(parsed.to_conventional()),
         Err(first_err) => {
@@ -179,6 +176,39 @@ async fn do_generate(provider: &AnyProvider, system: &str, user: &str) -> Result
             Ok(parsed2.to_conventional())
         }
     }
+}
+
+/// Call provider.chat() with up to 3 attempts and exponential backoff
+/// for transient failures (timeouts, 429, 503).
+async fn chat_with_retry(
+    provider: &AnyProvider,
+    system: &str,
+    user: &str,
+    max_attempts: usize,
+) -> Result<String> {
+    let mut last_err = None;
+    for attempt in 0..max_attempts {
+        match provider.chat(system, user).await {
+            Ok(raw) => return Ok(raw),
+            Err(e) => {
+                let err_str = format!("{e:#}");
+                let is_transient = err_str.contains("429")
+                    || err_str.contains("503")
+                    || err_str.contains("timeout")
+                    || err_str.contains("Timeout")
+                    || err_str.contains("connect")
+                    || err_str.contains("Connection");
+                if is_transient && attempt + 1 < max_attempts {
+                    let delay = 1u64 << attempt;
+                    tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                    last_err = Some(e);
+                } else {
+                    return Err(e).context("provider chat call");
+                }
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("provider chat failed after {max_attempts} attempts")))
 }
 
 #[cfg(test)]

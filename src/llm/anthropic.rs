@@ -74,6 +74,14 @@ impl AnthropicProvider {
         let status = resp.status();
         if !status.is_success() {
             let txt = resp.text().await.unwrap_or_default();
+            if status == 401 {
+                anyhow::bail!(
+                    "invalid Anthropic API key (401 Unauthorized).\n\
+                     Set the correct key via:\n  \
+                     aicommit config --provider anthropic --api-key <key>\n  \
+                     or the ANTHROPIC_API_KEY environment variable"
+                );
+            }
             anyhow::bail!("anthropic returned {status}: {txt}");
         }
         let parsed: MessagesResponse = resp.json().await.context("parse anthropic response")?;

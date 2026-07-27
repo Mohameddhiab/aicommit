@@ -118,6 +118,8 @@ pub struct CommitConfig {
     pub max_commits: Option<usize>,
     #[serde(default)]
     pub timeout_secs: Option<u64>,
+    #[serde(default)]
+    pub exclude_patterns: Option<Vec<String>>,
 }
 
 fn default_lang() -> String {
@@ -163,6 +165,7 @@ pub struct Config {
     pub commit_language: String,
     pub commit_max_commits: usize,
     pub commit_timeout_secs: u64,
+    pub exclude_patterns: Vec<String>,
 }
 
 impl Default for Config {
@@ -175,6 +178,7 @@ impl Default for Config {
             commit_language: default_lang(),
             commit_max_commits: default_max_commits(),
             commit_timeout_secs: default_timeout(),
+            exclude_patterns: vec![],
         }
     }
 }
@@ -203,6 +207,7 @@ pub fn load(
     let commit_language = cli_lang.or(file.commit.language).unwrap_or_else(default_lang);
     let commit_max_commits = file.commit.max_commits.unwrap_or_else(default_max_commits);
     let commit_timeout_secs = cli_timeout;
+    let exclude_patterns = file.commit.exclude_patterns.unwrap_or_default();
     Ok(Config {
         provider,
         ollama_url,
@@ -211,6 +216,7 @@ pub fn load(
         commit_language,
         commit_max_commits,
         commit_timeout_secs,
+        exclude_patterns,
     })
 }
 

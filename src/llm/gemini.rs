@@ -86,6 +86,14 @@ impl GeminiProvider {
         let status = resp.status();
         if !status.is_success() {
             let txt = resp.text().await.unwrap_or_default();
+            if status == 403 || status == 400 {
+                anyhow::bail!(
+                    "invalid Gemini API key (HTTP {status}).\n\
+                     Set the correct key via:\n  \
+                     aicommit config --provider gemini --api-key <key>\n  \
+                     or the GOOGLE_API_KEY environment variable"
+                );
+            }
             anyhow::bail!("gemini returned {status}: {txt}");
         }
         let parsed: GenerateContentResponse = resp.json().await.context("parse gemini response")?;

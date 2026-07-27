@@ -29,11 +29,18 @@ pub fn should_treat_as_single(diff: &str) -> bool {
 ///   - `src/db/pool.rs` → group "db"
 ///   - `README.md` → group "root"
 ///   - `package.json` → group "root"
-pub fn group_by_directory(diff: &str, max_groups: usize) -> Result<Vec<Group>> {
+///
+/// Files matching any glob pattern in `exclude` are skipped.
+pub fn group_by_directory(
+    diff: &str,
+    max_groups: usize,
+    exclude: &[String],
+) -> Result<Vec<Group>> {
     let files: Vec<PathBuf> = diff
         .lines()
         .filter(|l| l.starts_with("diff --git "))
         .filter_map(parse_diff_header_path)
+        .filter(|p| !matches_exclude(p, exclude))
         .collect();
 
     if files.is_empty() {
@@ -125,6 +132,21 @@ fn group_key(path: &Path) -> String {
     }
 }
 
+/// Check if a path matches any of the exclude glob patterns.
+fn matches_exclude(path: &Path, exclude: &[String]) -> bool {
+    if exclude.is_empty() {
+        return false;
+    }
+    let path_str = path.to_string_lossy();
+    exclude.iter().any(|pat| {
+        if let Ok(m) = glob::Pattern::new(pat) {
+            m.matches(&path_str)
+        } else {
+            false
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,7 +172,7 @@ mod tests {
     #[test]
     fn groups_by_top_level_directory() {
         let d = diff_with(&["src/auth/login.rs", "src/auth/logout.rs", "src/db/pool.rs"]);
-        let groups = group_by_directory(&d, 5).unwrap();
+        let groups = group_by_directory(&d, 5, &[]).unwrap();
         assert_eq!(groups.len(), 2);
         let names: Vec<_> = groups.iter().map(|g| g.name.as_str()).collect();
         assert!(names.contains(&"auth"));
@@ -160,7 +182,7 @@ mod tests {
     #[test]
     fn root_files_group_as_root() {
         let d = diff_with(&["README.md", "package.json"]);
-        let groups = group_by_directory(&d, 5).unwrap();
+        let groups = group_by_directory(&d, 5, &[]).unwrap();
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].name, "root");
         assert_eq!(groups[0].paths.len(), 2);
@@ -169,7 +191,7 @@ mod tests {
     #[test]
     fn caps_at_max_groups() {
         let d = diff_with(&["a/1.rs", "b/2.rs", "c/3.rs", "d/4.rs"]);
-        let groups = group_by_directory(&d, 2).unwrap();
+        let groups = group_by_directory(&d, 2, &[]).unwrap();
         assert_eq!(groups.len(), 2);
         // The misc group should contain the overflow.
         let has_misc = groups.iter().any(|g| g.name == "misc");

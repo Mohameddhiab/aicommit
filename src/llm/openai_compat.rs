@@ -83,6 +83,14 @@ impl OpenAiCompatProvider {
         let status = resp.status();
         if !status.is_success() {
             let txt = resp.text().await.unwrap_or_default();
+            if status == 401 {
+                anyhow::bail!(
+                    "invalid API key (401 Unauthorized).\n\
+                     Set the correct key via:\n  \
+                     aicommit config --provider <name> --api-key <key>\n  \
+                     or the corresponding environment variable (e.g. OPENAI_API_KEY)"
+                );
+            }
             anyhow::bail!("provider returned {status}: {txt}");
         }
         let parsed: ChatResponse = resp.json().await.context("parse provider response")?;
