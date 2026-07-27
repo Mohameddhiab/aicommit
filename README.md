@@ -4,9 +4,9 @@
 
 [![CI](https://github.com/Mohameddhiab/aicommit/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohameddhiab/aicommit/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/aicommit.svg)](https://crates.io/crates/aicommit)
+[![codecov](https://codecov.io/gh/Mohameddhiab/aicommit/graph/badge.svg)](https://codecov.io/gh/Mohameddhiab/aicommit)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org)
-[![codecov](https://codecov.io/gh/Mohameddhiab/aicommit/graph/badge.svg?token=YOUR_CODECOV_TOKEN)](https://codecov.io/gh/Mohameddhiab/aicommit)
 
 `aicommit` reads your staged changes, calls an AI provider, and writes clean
 [Conventional Commit](https://www.conventionalcommits.org/) messages — in **one command**, in **under a second**.
@@ -191,8 +191,11 @@ aicommit --provider openai --model gpt-4o
 | `--no-stage` | Disable auto-staging (you must `git add` first) |
 | `--provider <name>` | AI provider (`ollama`, `openai`, `anthropic`, `groq`, `deepseek`, `mistral`, `gemini`, `openrouter`) |
 | `--model <name>` | Model override (e.g. `gpt-4o`, `claude-3.5-sonnet`) |
+| `--base-url <url>` | Base URL for the provider API (e.g. `http://localhost:11434` for Ollama, `http://localhost:8000/v1` for OpenAI-compatible local servers) |
 | `--lang <lang>` | Language of the generated message (`en`, `fr`, `es`, `de`, etc.) |
 | `--api-key <key>` | Ephemeral API key (overrides env var and config file) |
+| `--timeout <secs>` | Timeout in seconds for API calls (default: 120) |
+| `--list-models` | List available models from the selected provider and exit |
 | `--help` (`-h`) | Print help |
 
 ### Examples
@@ -218,6 +221,14 @@ aicommit --provider groq --model llama-3.3-70b-versatile
 
 # Generate messages in French
 aicommit --lang fr
+
+# List available models from a provider
+aicommit --list-models --provider ollama
+aicommit --list-models --provider openai --api-key sk-...
+
+# Use a custom base URL (Ollama on non-default port, vLLM, LM Studio, etc.)
+aicommit --base-url http://localhost:11434 --model qwen2.5-coder:7b
+aicommit --base-url http://localhost:8000/v1 --provider openai --api-key sk-...
 
 # Configure API key
 aicommit config --provider openai --api-key sk-...

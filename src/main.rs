@@ -53,6 +53,10 @@ pub struct Cli {
     #[arg(long)]
     pub api_key: Option<String>,
 
+    /// Timeout in seconds for API calls (default: 120).
+    #[arg(long, default_value_t = 120)]
+    pub timeout: u64,
+
     /// List available models from the selected provider and exit.
     #[arg(long)]
     pub list_models: bool,
@@ -139,6 +143,7 @@ async fn list_models_workflow(cli: Cli) -> anyhow::Result<()> {
         cli.lang.clone(),
         cli.api_key.clone(),
         cli.base_url.clone(),
+        cli.timeout,
     )?;
     let provider = llm::build_provider(&cfg)?;
     let models = provider.list_models().await?;
@@ -163,6 +168,7 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
         cli.lang.clone(),
         cli.api_key.clone(),
         cli.base_url.clone(),
+        cli.timeout,
     )?;
 
     let mut diff = git::staged_diff()?;

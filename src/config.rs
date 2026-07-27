@@ -119,12 +119,14 @@ pub struct RemoteProviderConfig {
     pub model: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CommitConfig {
     #[serde(default = "default_lang")]
     pub language: String,
     #[serde(default = "default_max_commits")]
     pub max_commits: usize,
+    #[serde(default = "default_timeout")]
+    pub timeout_secs: u64,
 }
 
 fn default_lang() -> String {
@@ -132,6 +134,19 @@ fn default_lang() -> String {
 }
 fn default_max_commits() -> usize {
     3
+}
+fn default_timeout() -> u64 {
+    120
+}
+
+impl Default for CommitConfig {
+    fn default() -> Self {
+        Self {
+            language: default_lang(),
+            max_commits: default_max_commits(),
+            timeout_secs: default_timeout(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -184,6 +199,7 @@ pub fn load(
     cli_lang: Option<String>,
     cli_api_key: Option<String>,
     cli_base_url: Option<String>,
+    cli_timeout: u64,
 ) -> Result<Config> {
     let file = load_file()?;
     let provider = resolve_provider(&file, cli_provider.as_deref(), cli_api_key.as_deref())?;
@@ -202,6 +218,7 @@ pub fn load(
     let commit = CommitConfig {
         language: cli_lang.unwrap_or(file.commit.language.clone()),
         max_commits: file.commit.max_commits,
+        timeout_secs: cli_timeout,
     };
     Ok(Config {
         provider,
@@ -354,7 +371,7 @@ pub async fn handle_config_command(
     show: bool,
 ) -> Result<()> {
     if show {
-        let cfg = load(None, None, None, None, None)?;
+        let cfg = load(None, None, None, None, None, 120)?;
         println!("{cfg:#?}");
         return Ok(());
     }

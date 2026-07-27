@@ -6,7 +6,7 @@ use aicommit::config::{load, Config};
 use aicommit::git::GitRepo;
 
 fn mock_config() -> Config {
-    load(Some("mock".into()), None, None, None, None).expect("mock config should load")
+    load(Some("mock".into()), None, None, None, None, 120).expect("mock config should load")
 }
 
 #[test]
@@ -77,6 +77,7 @@ async fn test_workflow_via_free_functions() {
 
     let diff = aicommit::git::staged_diff().unwrap();
     assert!(diff.contains("main.rs"), "should detect staged file");
+    drop(_lock);
 
     let provider = aicommit::llm::build_provider(&mock_config()).unwrap();
     let msg = aicommit::llm::generate_commit_message(&provider, &diff, &mock_config())

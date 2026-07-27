@@ -52,10 +52,12 @@ impl AnyProvider {
 
 /// Build the concrete provider from the resolved config.
 pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
+    let timeout = cfg.commit.timeout_secs;
     match cfg.provider {
         ProviderKind::Mock => Ok(AnyProvider::Mock(mock::MockProvider::new())),
         ProviderKind::Ollama => Ok(AnyProvider::Ollama(ollama::OllamaProvider::new(
             cfg.ollama.clone(),
+            timeout,
         ))),
         ProviderKind::Openai
         | ProviderKind::Groq
@@ -78,7 +80,7 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 .clone()
                 .ok_or_else(|| anyhow!("missing model for {}", cfg.provider.as_str()))?;
             Ok(AnyProvider::OpenAiCompat(
-                openai_compat::OpenAiCompatProvider::new(base_url, api_key, model),
+                openai_compat::OpenAiCompatProvider::new(base_url, api_key, model, timeout),
             ))
         }
         ProviderKind::Anthropic => {
@@ -98,7 +100,7 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 .clone()
                 .unwrap_or_else(|| "claude-3-5-sonnet-20241022".into());
             Ok(AnyProvider::Anthropic(anthropic::AnthropicProvider::new(
-                base_url, api_key, model,
+                base_url, api_key, model, timeout,
             )))
         }
         ProviderKind::Gemini => {
@@ -118,38 +120,9 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 .clone()
                 .unwrap_or_else(|| "gemini-1.5-flash".into());
             Ok(AnyProvider::Gemini(gemini::GeminiProvider::new(
-                base_url, api_key, model,
+                base_url, api_key, model, timeout,
             )))
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn retry_rejects_garbage_then_accepts_valid() {
-        let bad = "this is not JSON at all".to_string();
-        let good = r#"{"type":"fix","scope":"retry","description":"handle parse error","body":"retried once"}"#.to_string();
-        let provider = AnyProvider::Mock(mock::MockProvider::with_responses(vec![bad, good]));
-        let cfg = Config::default();
-
-        let result = generate_commit_message(&provider, "fake diff", &cfg).await;
-        assert!(result.is_ok(), "retry should succeed: {:?}", result.err());
-        let msg = result.unwrap();
-        assert_eq!(msg, "fix(retry): handle parse error\n\nretried once");
-    }
-
-    #[tokio::test]
-    async fn retry_fails_on_two_garbage_responses() {
-        let bad = "definitely not json".to_string();
-        let provider =
-            AnyProvider::Mock(mock::MockProvider::with_responses(vec![bad.clone(), bad]));
-        let cfg = Config::default();
-
-        let result = generate_commit_message(&provider, "fake diff", &cfg).await;
-        assert!(result.is_err(), "two garbage responses should fail");
     }
 }
 
@@ -199,5 +172,34 @@ async fn do_generate(provider: &AnyProvider, system: &str, user: &str) -> Result
                 .context("parse commit message after retry")?;
             Ok(parsed2.to_conventional())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn retry_rejects_garbage_then_accepts_valid() {
+        let bad = "this is not JSON at all".to_string();
+        let good = "{\"type\":\"fix\",\"scope\":\"retry\",\"description\":\"handle parse error\",\"body\":\"retried once\"}".to_string();
+        let provider = AnyProvider::Mock(mock::MockProvider::with_responses(vec![bad, good]));
+        let cfg = Config::default();
+
+        let result = generate_commit_message(&provider, "fake diff", &cfg).await;
+        assert!(result.is_ok(), "retry should succeed: {:?}", result.err());
+        let msg = result.unwrap();
+        assert_eq!(msg, "fix(retry): handle parse error\n\nretried once");
+    }
+
+    #[tokio::test]
+    async fn retry_fails_on_two_garbage_responses() {
+        let bad = "definitely not json".to_string();
+        let provider =
+            AnyProvider::Mock(mock::MockProvider::with_responses(vec![bad.clone(), bad]));
+        let cfg = Config::default();
+
+        let result = generate_commit_message(&provider, "fake diff", &cfg).await;
+        assert!(result.is_err(), "two garbage responses should fail");
     }
 }

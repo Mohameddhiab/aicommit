@@ -11,13 +11,13 @@ pub struct OpenAiCompatProvider {
 }
 
 impl OpenAiCompatProvider {
-    pub fn new(base_url: String, api_key: String, model: String) -> Self {
+    pub fn new(base_url: String, api_key: String, model: String, timeout_secs: u64) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             api_key,
             model,
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(120))
+                .timeout(std::time::Duration::from_secs(timeout_secs))
                 .build()
                 .expect("reqwest client"),
         }

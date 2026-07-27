@@ -26,9 +26,12 @@ impl MockProvider {
     }
 
     pub async fn chat(&self, _system: &str, _user: &str) -> Result<String> {
-        let mut idx = self.index.lock().unwrap();
-        let resp = self.responses[*idx % self.responses.len()].clone();
-        *idx += 1;
+        let resp = {
+            let mut idx = self.index.lock().unwrap();
+            let r = self.responses[*idx % self.responses.len()].clone();
+            *idx += 1;
+            r
+        };
         Ok(resp)
     }
 

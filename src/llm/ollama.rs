@@ -11,12 +11,12 @@ pub struct OllamaProvider {
 }
 
 impl OllamaProvider {
-    pub fn new(cfg: OllamaConfig) -> Self {
+    pub fn new(cfg: OllamaConfig, timeout_secs: u64) -> Self {
         Self {
             url: cfg.url.trim_end_matches('/').to_string(),
             model: cfg.model,
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(120))
+                .timeout(std::time::Duration::from_secs(timeout_secs))
                 .build()
                 .expect("reqwest client"),
         }
