@@ -167,11 +167,11 @@ aicommit --provider openai --model gpt-4o
 |----------|------|---------------|-------------|
 | [Ollama](https://ollama.com) | None | `qwen2.5-coder:7b` | Local |
 | [OpenAI](https://platform.openai.com) | `OPENAI_API_KEY` | `gpt-4o` | Cloud |
-| [Anthropic](https://console.anthropic.com) | `ANTHROPIC_API_KEY` | `claude-3-5-sonnet-20241022` | Cloud |
+| [Anthropic](https://console.anthropic.com) | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` | Cloud |
 | [Groq](https://groq.com) | `GROQ_API_KEY` | `llama-3.3-70b-versatile` | Cloud |
 | [DeepSeek](https://deepseek.com) | `DEEPSEEK_API_KEY` | `deepseek-coder` | Cloud |
 | [Mistral](https://mistral.ai) | `MISTRAL_API_KEY` | `codestral-latest` | Cloud |
-| [Gemini](https://ai.google.dev) | `GOOGLE_API_KEY` | `gemini-1.5-flash` | Cloud |
+| [Gemini](https://ai.google.dev) | `GOOGLE_API_KEY` | `gemini-2.0-flash` | Cloud |
 | [OpenRouter](https://openrouter.ai) | `OPENROUTER_API_KEY` | `anthropic/claude-3.5-sonnet` | Cloud |
 
 > **Auto-detection:** If no provider is specified, aicommit checks for a running Ollama instance

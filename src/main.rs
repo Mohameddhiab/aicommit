@@ -204,7 +204,7 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let groups = splitter::group_by_directory(&diff, cfg.commit.max_commits)?;
+    let groups = splitter::group_by_directory(&diff, cfg.commit_max_commits)?;
     if cli.interactive {
         let mut msgs = Vec::new();
         for group in &groups {

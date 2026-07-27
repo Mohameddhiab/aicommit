@@ -52,13 +52,19 @@ impl AnyProvider {
 
 /// Build the concrete provider from the resolved config.
 pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
-    let timeout = cfg.commit.timeout_secs;
+    let timeout = cfg.commit_timeout_secs;
     match cfg.provider {
         ProviderKind::Mock => Ok(AnyProvider::Mock(mock::MockProvider::new())),
-        ProviderKind::Ollama => Ok(AnyProvider::Ollama(ollama::OllamaProvider::new(
-            cfg.ollama.clone(),
-            timeout,
-        ))),
+        ProviderKind::Ollama => {
+            let ollama_cfg = crate::config::OllamaConfig {
+                url: Some(cfg.ollama_url.clone()),
+                model: Some(cfg.ollama_model.clone()),
+            };
+            Ok(AnyProvider::Ollama(ollama::OllamaProvider::new(
+                ollama_cfg,
+                timeout,
+            )))
+        }
         ProviderKind::Openai
         | ProviderKind::Groq
         | ProviderKind::Deepseek
@@ -98,7 +104,7 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 .remote
                 .model
                 .clone()
-                .unwrap_or_else(|| "claude-3-5-sonnet-20241022".into());
+                .unwrap_or_else(|| "claude-sonnet-4-20250514".into());
             Ok(AnyProvider::Anthropic(anthropic::AnthropicProvider::new(
                 base_url, api_key, model, timeout,
             )))
@@ -118,7 +124,7 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 .remote
                 .model
                 .clone()
-                .unwrap_or_else(|| "gemini-1.5-flash".into());
+                .unwrap_or_else(|| "gemini-2.0-flash".into());
             Ok(AnyProvider::Gemini(gemini::GeminiProvider::new(
                 base_url, api_key, model, timeout,
             )))

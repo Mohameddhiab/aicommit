@@ -88,12 +88,12 @@ pub struct ProviderConfig {
     pub default: Option<ProviderKind>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct OllamaConfig {
-    #[serde(default = "default_ollama_url")]
-    pub url: String,
-    #[serde(default = "default_ollama_model")]
-    pub model: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 fn default_ollama_url() -> String {
@@ -103,15 +103,6 @@ fn default_ollama_model() -> String {
     "qwen2.5-coder:7b".to_string()
 }
 
-impl Default for OllamaConfig {
-    fn default() -> Self {
-        Self {
-            url: default_ollama_url(),
-            model: default_ollama_model(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct RemoteProviderConfig {
     pub api_key: Option<String>,
@@ -119,14 +110,14 @@ pub struct RemoteProviderConfig {
     pub model: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct CommitConfig {
-    #[serde(default = "default_lang")]
-    pub language: String,
-    #[serde(default = "default_max_commits")]
-    pub max_commits: usize,
-    #[serde(default = "default_timeout")]
-    pub timeout_secs: u64,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub max_commits: Option<usize>,
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
 }
 
 fn default_lang() -> String {
@@ -137,16 +128,6 @@ fn default_max_commits() -> usize {
 }
 fn default_timeout() -> u64 {
     120
-}
-
-impl Default for CommitConfig {
-    fn default() -> Self {
-        Self {
-            language: default_lang(),
-            max_commits: default_max_commits(),
-            timeout_secs: default_timeout(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -176,18 +157,24 @@ pub struct ConfigFile {
 #[derive(Clone, Debug)]
 pub struct Config {
     pub provider: ProviderKind,
-    pub ollama: OllamaConfig,
+    pub ollama_url: String,
+    pub ollama_model: String,
     pub remote: RemoteProviderConfig,
-    pub commit: CommitConfig,
+    pub commit_language: String,
+    pub commit_max_commits: usize,
+    pub commit_timeout_secs: u64,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             provider: ProviderKind::Mock,
-            ollama: OllamaConfig::default(),
+            ollama_url: default_ollama_url(),
+            ollama_model: default_ollama_model(),
             remote: RemoteProviderConfig::default(),
-            commit: CommitConfig::default(),
+            commit_language: default_lang(),
+            commit_max_commits: default_max_commits(),
+            commit_timeout_secs: default_timeout(),
         }
     }
 }
@@ -211,20 +198,19 @@ pub fn load(
         base_url: cli_base_url.clone().or(remote_base.base_url.clone()),
         model: cli_model.clone().or(remote_base.model.clone()),
     };
-    let ollama = OllamaConfig {
-        url: cli_base_url.unwrap_or(file.ollama.url.clone()),
-        model: cli_model.unwrap_or_else(|| file.ollama.model.clone()),
-    };
-    let commit = CommitConfig {
-        language: cli_lang.unwrap_or(file.commit.language.clone()),
-        max_commits: file.commit.max_commits,
-        timeout_secs: cli_timeout,
-    };
+    let ollama_url = cli_base_url.clone().or(file.ollama.url).unwrap_or_else(default_ollama_url);
+    let ollama_model = cli_model.clone().or(file.ollama.model).unwrap_or_else(default_ollama_model);
+    let commit_language = cli_lang.or(file.commit.language).unwrap_or_else(default_lang);
+    let commit_max_commits = file.commit.max_commits.unwrap_or_else(default_max_commits);
+    let commit_timeout_secs = cli_timeout;
     Ok(Config {
         provider,
-        ollama,
+        ollama_url,
+        ollama_model,
         remote,
-        commit,
+        commit_language,
+        commit_max_commits,
+        commit_timeout_secs,
     })
 }
 
@@ -253,19 +239,18 @@ fn read_file(path: &PathBuf) -> Result<ConfigFile> {
 }
 
 fn merge_files(local: PathBuf, global: PathBuf) -> Result<ConfigFile> {
-    let mut acc = ConfigFile::default();
-    if global.exists() {
-        acc = read_file(&global)?;
-    }
+    let mut acc = if global.exists() {
+        read_file(&global)?
+    } else {
+        ConfigFile::default()
+    };
     if local.exists() {
         let l = read_file(&local)?;
-        // Local overrides global where present.
         if l.provider.default.is_some() {
             acc.provider.default = l.provider.default;
         }
-        if !l.ollama.url.is_empty() {
-            acc.ollama = l.ollama;
-        }
+        merge_optional(&mut acc.ollama.url, l.ollama.url);
+        merge_optional(&mut acc.ollama.model, l.ollama.model);
         merge_remote(&mut acc.openai, l.openai);
         merge_remote(&mut acc.anthropic, l.anthropic);
         merge_remote(&mut acc.groq, l.groq);
@@ -273,11 +258,17 @@ fn merge_files(local: PathBuf, global: PathBuf) -> Result<ConfigFile> {
         merge_remote(&mut acc.mistral, l.mistral);
         merge_remote(&mut acc.gemini, l.gemini);
         merge_remote(&mut acc.openrouter, l.openrouter);
-        if !l.commit.language.is_empty() || l.commit.max_commits != 0 {
-            acc.commit = l.commit;
-        }
+        merge_optional(&mut acc.commit.language, l.commit.language);
+        merge_optional(&mut acc.commit.max_commits, l.commit.max_commits);
+        merge_optional(&mut acc.commit.timeout_secs, l.commit.timeout_secs);
     }
     Ok(acc)
+}
+
+fn merge_optional<T>(dst: &mut Option<T>, src: Option<T>) {
+    if src.is_some() {
+        *dst = src;
+    }
 }
 
 fn merge_remote(dst: &mut RemoteProviderConfig, src: RemoteProviderConfig) {
@@ -327,7 +318,8 @@ fn resolve_provider(
         return Ok(default);
     }
     // Auto-detect.
-    if ollama_reachable(&file.ollama.url) {
+    let ollama_url = file.ollama.url.as_deref().unwrap_or("http://localhost:11434");
+    if ollama_reachable(ollama_url) {
         return Ok(ProviderKind::Ollama);
     }
     for kind in [

@@ -100,18 +100,29 @@ fn parse_diff_header_path(line: &str) -> Option<PathBuf> {
     Some(PathBuf::from(trimmed))
 }
 
-/// Decide which "name" represents a file: immediate parent directory name,
-/// or "root" for files at the repository root.
+/// Decide which "name" represents a file: the first subdirectory under the
+/// repository root, or "root" for files at the root level.
+///
+/// Examples:
+///   "src/auth/login.rs"     → "auth"
+///   "src/db/pool.rs"        → "db"
+///   "README.md"             → "root"
+///   "lib.rs"                → "root"
+///   "src/a/b/c.rs"          → "src"
+///   "assets/icons/close.svg" → "icons"
 fn group_key(path: &Path) -> String {
-    path.parent()
-        .and_then(|p| {
-            if p == Path::new("") || p == Path::new(".") {
-                None
-            } else {
-                p.file_name().map(|n| n.to_string_lossy().into_owned())
-            }
-        })
-        .unwrap_or_else(|| "root".to_string())
+    let comps: Vec<_> = path.components().collect();
+    if comps.len() < 2 {
+        return "root".to_string();
+    }
+    let second = &comps[1];
+    // If there are at least 3 components, the 2nd is a directory.
+    // If there are exactly 2, the 2nd is the filename → use the 1st.
+    if comps.len() > 2 {
+        second.as_os_str().to_string_lossy().into_owned()
+    } else {
+        comps[0].as_os_str().to_string_lossy().into_owned()
+    }
 }
 
 #[cfg(test)]

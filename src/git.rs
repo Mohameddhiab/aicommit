@@ -77,8 +77,10 @@ impl GitRepo {
         let mut index = self.repo.index()?;
         let tree_oid = index.write_tree()?;
         let tree = self.repo.find_tree(tree_oid)?;
-        let sig = Signature::now("aicommit", "aicommit@users.noreply.github.com")
-            .context("create signature")?;
+        let sig = self
+            .repo
+            .signature()
+            .unwrap_or_else(|_| Signature::now("aicommit", "aicommit@users.noreply.github.com").expect("create fallback signature"));
         let parents: Vec<git2::Commit<'_>> = match self.repo.head().ok() {
             Some(h) => vec![self
                 .repo

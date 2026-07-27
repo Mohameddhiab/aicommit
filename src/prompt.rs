@@ -4,10 +4,10 @@ use crate::config::Config;
 
 /// Build the system prompt enforcing Conventional Commits and JSON output.
 pub fn system_prompt(cfg: &Config) -> String {
-    let lang_clause = if cfg.commit.language.eq_ignore_ascii_case("en") {
+    let lang_clause = if cfg.commit_language.eq_ignore_ascii_case("en") {
         String::new()
     } else {
-        format!("\nWrite the commit message in {}.", cfg.commit.language)
+        format!("\nWrite the commit message in {}.", cfg.commit_language)
     };
     format!(
 "You are an AI expert in Git and the Conventional Commits specification.

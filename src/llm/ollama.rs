@@ -13,8 +13,12 @@ pub struct OllamaProvider {
 impl OllamaProvider {
     pub fn new(cfg: OllamaConfig, timeout_secs: u64) -> Self {
         Self {
-            url: cfg.url.trim_end_matches('/').to_string(),
-            model: cfg.model,
+            url: cfg
+                .url
+                .unwrap_or_else(|| "http://localhost:11434".into())
+                .trim_end_matches('/')
+                .to_string(),
+            model: cfg.model.unwrap_or_else(|| "qwen2.5-coder:7b".into()),
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(timeout_secs))
                 .build()
