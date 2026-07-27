@@ -61,8 +61,7 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 model: Some(cfg.ollama_model.clone()),
             };
             Ok(AnyProvider::Ollama(ollama::OllamaProvider::new(
-                ollama_cfg,
-                timeout,
+                ollama_cfg, timeout,
             )))
         }
         ProviderKind::Openai
@@ -213,7 +212,8 @@ async fn chat_with_retry(
             }
         }
     }
-    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("provider chat failed after {max_attempts} attempts")))
+    Err(last_err
+        .unwrap_or_else(|| anyhow::anyhow!("provider chat failed after {max_attempts} attempts")))
 }
 
 #[cfg(test)]

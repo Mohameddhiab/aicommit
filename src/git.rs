@@ -77,10 +77,10 @@ impl GitRepo {
         let mut index = self.repo.index()?;
         let tree_oid = index.write_tree()?;
         let tree = self.repo.find_tree(tree_oid)?;
-        let sig = self
-            .repo
-            .signature()
-            .unwrap_or_else(|_| Signature::now("aicommit", "aicommit@users.noreply.github.com").expect("create fallback signature"));
+        let sig = self.repo.signature().unwrap_or_else(|_| {
+            Signature::now("aicommit", "aicommit@users.noreply.github.com")
+                .expect("create fallback signature")
+        });
         let parents: Vec<git2::Commit<'_>> = match self.repo.head().ok() {
             Some(h) => vec![self
                 .repo
@@ -132,7 +132,9 @@ impl GitRepo {
     pub fn undo_last_commit(&self) -> Result<()> {
         let head = self.repo.head().context("no HEAD to undo")?;
         let commit = head.peel_to_commit().context("peel HEAD to commit")?;
-        let parent = commit.parent(0).context("no parent commit — first commit cannot be undone with reset")?;
+        let parent = commit
+            .parent(0)
+            .context("no parent commit — first commit cannot be undone with reset")?;
         let obj = parent.as_object().clone();
         self.repo
             .reset(&obj, git2::ResetType::Soft, None)
@@ -143,7 +145,12 @@ impl GitRepo {
     /// Check if the repository is in a merge, rebase, bisect, or cherry-pick state.
     pub fn is_operation_in_progress(&self) -> bool {
         let path = self.repo.path();
-        for marker in &["MERGE_HEAD", "REBASE_HEAD", "BISECT_LOG", "CHERRY_PICK_HEAD"] {
+        for marker in &[
+            "MERGE_HEAD",
+            "REBASE_HEAD",
+            "BISECT_LOG",
+            "CHERRY_PICK_HEAD",
+        ] {
             if path.join(marker).exists() {
                 return true;
             }

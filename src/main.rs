@@ -223,7 +223,8 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let groups = splitter::group_by_directory(&diff, cfg.commit_max_commits, &cfg.exclude_patterns)?;
+    let groups =
+        splitter::group_by_directory(&diff, cfg.commit_max_commits, &cfg.exclude_patterns)?;
     if cli.interactive {
         let mut msgs = Vec::new();
         for group in &groups {
@@ -237,7 +238,8 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
         let selected = interactive::select_commits(&groups, &msgs);
         for &idx in &selected {
             let parsed = parser::parse_commit_message(&msgs[idx])?;
-            let final_msg = interactive::edit_message(&parsed.format_with_template(&cfg.commit_template))?;
+            let final_msg =
+                interactive::edit_message(&parsed.format_with_template(&cfg.commit_template))?;
             let commit_paths: Vec<PathBuf> = groups[idx].paths.iter().map(PathBuf::from).collect();
             do_commit(&final_msg, Some(&commit_paths), cli.dry_run)?;
         }

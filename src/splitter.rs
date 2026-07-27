@@ -31,11 +31,7 @@ pub fn should_treat_as_single(diff: &str) -> bool {
 ///   - `package.json` → group "root"
 ///
 /// Files matching any glob pattern in `exclude` are skipped.
-pub fn group_by_directory(
-    diff: &str,
-    max_groups: usize,
-    exclude: &[String],
-) -> Result<Vec<Group>> {
+pub fn group_by_directory(diff: &str, max_groups: usize, exclude: &[String]) -> Result<Vec<Group>> {
     let files: Vec<PathBuf> = diff
         .lines()
         .filter(|l| l.starts_with("diff --git "))

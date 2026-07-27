@@ -210,9 +210,17 @@ pub fn load(
         base_url: cli_base_url.clone().or(remote_base.base_url.clone()),
         model: cli_model.clone().or(remote_base.model.clone()),
     };
-    let ollama_url = cli_base_url.clone().or(file.ollama.url).unwrap_or_else(default_ollama_url);
-    let ollama_model = cli_model.clone().or(file.ollama.model).unwrap_or_else(default_ollama_model);
-    let commit_language = cli_lang.or(file.commit.language).unwrap_or_else(default_lang);
+    let ollama_url = cli_base_url
+        .clone()
+        .or(file.ollama.url)
+        .unwrap_or_else(default_ollama_url);
+    let ollama_model = cli_model
+        .clone()
+        .or(file.ollama.model)
+        .unwrap_or_else(default_ollama_model);
+    let commit_language = cli_lang
+        .or(file.commit.language)
+        .unwrap_or_else(default_lang);
     let commit_max_commits = file.commit.max_commits.unwrap_or_else(default_max_commits);
     let commit_timeout_secs = cli_timeout;
     let exclude_patterns = file.commit.exclude_patterns.unwrap_or_default();
@@ -334,7 +342,11 @@ fn resolve_provider(
         return Ok(default);
     }
     // Auto-detect.
-    let ollama_url = file.ollama.url.as_deref().unwrap_or("http://localhost:11434");
+    let ollama_url = file
+        .ollama
+        .url
+        .as_deref()
+        .unwrap_or("http://localhost:11434");
     if ollama_reachable(ollama_url) {
         return Ok(ProviderKind::Ollama);
     }
