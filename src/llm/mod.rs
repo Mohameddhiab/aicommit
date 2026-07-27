@@ -152,13 +152,18 @@ pub async fn generate_commit_message(
 ) -> Result<String> {
     let system = prompt::system_prompt(cfg);
     let user = prompt::user_prompt(diff);
-    do_generate(provider, &system, &user).await
+    do_generate(provider, &system, &user, &cfg.commit_template).await
 }
 
-async fn do_generate(provider: &AnyProvider, system: &str, user: &str) -> Result<String> {
+async fn do_generate(
+    provider: &AnyProvider,
+    system: &str,
+    user: &str,
+    template: &str,
+) -> Result<String> {
     let raw = chat_with_retry(provider, system, user, 3).await?;
     match crate::parser::parse_commit_message(&raw) {
-        Ok(parsed) => Ok(parsed.to_conventional()),
+        Ok(parsed) => Ok(parsed.format_with_template(template)),
         Err(first_err) => {
             let retry_system = format!(
                 "Your previous response was not valid JSON. \
@@ -173,7 +178,7 @@ async fn do_generate(provider: &AnyProvider, system: &str, user: &str) -> Result
                 .context("provider retry call")?;
             let parsed2 = crate::parser::parse_commit_message(&raw2)
                 .context("parse commit message after retry")?;
-            Ok(parsed2.to_conventional())
+            Ok(parsed2.format_with_template(template))
         }
     }
 }

@@ -19,21 +19,55 @@ pub struct CommitMessage {
     pub body: String,
 }
 
+/// Map a Conventional Commit type to its emoji.
+pub fn type_emoji(kind: &str) -> &'static str {
+    match kind {
+        "feat" => "✨",
+        "fix" => "🐛",
+        "docs" => "📝",
+        "style" => "💄",
+        "refactor" => "♻️",
+        "perf" => "⚡",
+        "test" => "✅",
+        "build" => "📦",
+        "ci" => "👷",
+        "chore" => "🔧",
+        _ => "",
+    }
+}
+
 impl CommitMessage {
     /// Format as a Conventional Commit single-line message,
     /// appending an optional body separated by a blank line.
     pub fn to_conventional(&self) -> String {
+        self.format_with_template("{type}{scope}: {description}")
+    }
+
+    /// Format the message using a template string.
+    ///
+    /// Supported placeholders:
+    ///   `{type}`        — the commit type (feat, fix, …)
+    ///   `{scope}`       — `(scope)` or empty
+    ///   `{description}` — the description text
+    ///   `{body}`        — the body text or empty
+    ///   `{emoji}`       — emoji mapped from the type
+    pub fn format_with_template(&self, template: &str) -> String {
         let scope = if self.scope.is_empty() || self.scope == "misc" {
             String::new()
         } else {
             format!("({})", self.scope)
         };
-        let head = format!("{}{}: {}", self.kind, scope, self.description);
-        if self.body.trim().is_empty() {
-            head
-        } else {
-            format!("{head}\n\n{}", self.body.trim())
+        let mut msg = template
+            .replace("{type}", &self.kind)
+            .replace("{scope}", &scope)
+            .replace("{description}", &self.description)
+            .replace("{body}", self.body.trim())
+            .replace("{emoji}", type_emoji(&self.kind));
+        if !self.body.trim().is_empty() && !template.contains("{body}") {
+            msg.push_str("\n\n");
+            msg.push_str(self.body.trim());
         }
+        msg
     }
 }
 

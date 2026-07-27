@@ -212,10 +212,11 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
     if cli.single || splitter::should_treat_as_single(&diff) {
         let msg = llm::generate_commit_message(&provider, &diff, &cfg).await?;
         let parsed = parser::parse_commit_message(&msg)?;
+        let formatted = parsed.format_with_template(&cfg.commit_template);
         let final_msg = if cli.interactive {
-            interactive::edit_message(&parsed.to_conventional())?
+            interactive::edit_message(&formatted)?
         } else {
-            parsed.to_conventional()
+            formatted
         };
         do_commit(&final_msg, None, cli.dry_run)?;
         display::box_end();
@@ -236,7 +237,7 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
         let selected = interactive::select_commits(&groups, &msgs);
         for &idx in &selected {
             let parsed = parser::parse_commit_message(&msgs[idx])?;
-            let final_msg = interactive::edit_message(&parsed.to_conventional())?;
+            let final_msg = interactive::edit_message(&parsed.format_with_template(&cfg.commit_template))?;
             let commit_paths: Vec<PathBuf> = groups[idx].paths.iter().map(PathBuf::from).collect();
             do_commit(&final_msg, Some(&commit_paths), cli.dry_run)?;
         }
@@ -247,7 +248,7 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
             display::box_line(&format!("◉ Group '{}' — {glines} lines", group.name));
             let msg = llm::generate_commit_message(&provider, &gdiff, &cfg).await?;
             let parsed = parser::parse_commit_message(&msg)?;
-            let final_msg = parsed.to_conventional();
+            let final_msg = parsed.format_with_template(&cfg.commit_template);
             let commit_paths: Vec<PathBuf> = group.paths.iter().map(PathBuf::from).collect();
             do_commit(&final_msg, Some(&commit_paths), cli.dry_run)?;
         }
