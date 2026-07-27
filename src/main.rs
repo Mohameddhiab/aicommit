@@ -90,6 +90,8 @@ pub enum Command {
         #[arg(long)]
         show: bool,
     },
+    /// Undo the last aicommit-generated commit (git reset --soft HEAD~1).
+    Undo,
 }
 
 #[tokio::main]
@@ -126,6 +128,14 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             base_url,
             show,
         }) => config::handle_config_command(api_key, provider, model, base_url, show).await,
+        Some(Command::Undo) => {
+            let repo = git::GitRepo::from_current_dir()?;
+            repo.undo_last_commit()?;
+            display::box_start("Undo");
+            display::box_line("Last commit has been undone (git reset --soft HEAD~1).");
+            display::box_end();
+            Ok(())
+        }
         None => {
             if cli.list_models {
                 return list_models_workflow(cli).await;
@@ -170,6 +180,14 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
         cli.base_url.clone(),
         cli.timeout,
     )?;
+
+    let repo = git::GitRepo::from_current_dir()?;
+    if repo.is_operation_in_progress() {
+        anyhow::bail!(
+            "a merge, rebase, bisect, or cherry-pick is in progress. \
+             Complete or abort it before running aicommit."
+        );
+    }
 
     let mut diff = git::staged_diff()?;
     if diff.is_empty() && !cli.no_stage {

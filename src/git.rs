@@ -128,6 +128,28 @@ impl GitRepo {
             .diff_tree_to_index(Some(&head), Some(&index), None)?;
         Ok(diff.deltas().count() > 0)
     }
+
+    pub fn undo_last_commit(&self) -> Result<()> {
+        let head = self.repo.head().context("no HEAD to undo")?;
+        let commit = head.peel_to_commit().context("peel HEAD to commit")?;
+        let parent = commit.parent(0).context("no parent commit — first commit cannot be undone with reset")?;
+        let obj = parent.as_object().clone();
+        self.repo
+            .reset(&obj, git2::ResetType::Soft, None)
+            .context("undo last commit")?;
+        Ok(())
+    }
+
+    /// Check if the repository is in a merge, rebase, bisect, or cherry-pick state.
+    pub fn is_operation_in_progress(&self) -> bool {
+        let path = self.repo.path();
+        for marker in &["MERGE_HEAD", "REBASE_HEAD", "BISECT_LOG", "CHERRY_PICK_HEAD"] {
+            if path.join(marker).exists() {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 // --- Free functions (thin wrappers using GitRepo::from_current_dir) ---
