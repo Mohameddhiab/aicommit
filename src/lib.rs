@@ -1,4 +1,6 @@
+pub mod banner;
 pub mod config;
+pub mod display;
 pub mod git;
 pub mod interactive;
 pub mod llm;

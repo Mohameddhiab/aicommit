@@ -178,14 +178,12 @@ impl Default for Config {
 }
 
 /// Load and merge configuration from all sources.
-///
-/// `cli_provider`, `cli_model`, `cli_lang`, `cli_api_key` are the override values
-/// coming from the command line (highest priority).
 pub fn load(
     cli_provider: Option<String>,
     cli_model: Option<String>,
     cli_lang: Option<String>,
     cli_api_key: Option<String>,
+    cli_base_url: Option<String>,
 ) -> Result<Config> {
     let file = load_file()?;
     let provider = resolve_provider(&file, cli_provider.as_deref(), cli_api_key.as_deref())?;
@@ -194,11 +192,11 @@ pub fn load(
         api_key: cli_api_key
             .or_else(|| env_api_key(provider))
             .or_else(|| remote_base.api_key.clone()),
-        base_url: remote_base.base_url.clone(),
+        base_url: cli_base_url.clone().or(remote_base.base_url.clone()),
         model: cli_model.clone().or(remote_base.model.clone()),
     };
     let ollama = OllamaConfig {
-        url: file.ollama.url.clone(),
+        url: cli_base_url.unwrap_or(file.ollama.url.clone()),
         model: cli_model.unwrap_or_else(|| file.ollama.model.clone()),
     };
     let commit = CommitConfig {
@@ -351,54 +349,61 @@ fn ollama_reachable(url: &str) -> bool {
 pub async fn handle_config_command(
     api_key: Option<String>,
     provider: Option<String>,
+    model: Option<String>,
+    base_url: Option<String>,
     show: bool,
 ) -> Result<()> {
     if show {
-        let cfg = load(None, None, None, None)?;
+        let cfg = load(None, None, None, None, None)?;
         println!("{cfg:#?}");
         return Ok(());
     }
     let provider_kind = match provider {
         Some(p) => p.parse::<ProviderKind>()?,
-        None => return Err(anyhow!("--provider is required when setting an API key")),
+        None => return Err(anyhow!("--provider is required")),
     };
-    let key = match api_key {
-        Some(k) => k,
-        None => return Err(anyhow!("--api-key is required")),
-    };
-    write_api_key(provider_kind, &key)?;
-    println!(
-        "Saved API key for {} in {}",
-        provider_kind.as_str(),
-        global_config_path().display()
-    );
-    Ok(())
-}
-
-fn write_api_key(provider: ProviderKind, key: &str) -> Result<()> {
     let path = global_config_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).ok();
-    }
     let mut file = if path.exists() {
         read_file(&path)?
     } else {
         ConfigFile::default()
     };
-    match provider {
-        ProviderKind::Openai => file.openai.api_key = Some(key.to_string()),
-        ProviderKind::Anthropic => file.anthropic.api_key = Some(key.to_string()),
-        ProviderKind::Groq => file.groq.api_key = Some(key.to_string()),
-        ProviderKind::Deepseek => file.deepseek.api_key = Some(key.to_string()),
-        ProviderKind::Mistral => file.mistral.api_key = Some(key.to_string()),
-        ProviderKind::Gemini => file.gemini.api_key = Some(key.to_string()),
-        ProviderKind::Openrouter => file.openrouter.api_key = Some(key.to_string()),
-        ProviderKind::Mock => return Err(anyhow!("Mock provider does not need an API key")),
-        ProviderKind::Ollama => return Err(anyhow!("Ollama does not need an API key")),
+    // Write the section for this provider.
+    let section = match provider_kind {
+        ProviderKind::Openai => &mut file.openai,
+        ProviderKind::Anthropic => &mut file.anthropic,
+        ProviderKind::Groq => &mut file.groq,
+        ProviderKind::Deepseek => &mut file.deepseek,
+        ProviderKind::Mistral => &mut file.mistral,
+        ProviderKind::Gemini => &mut file.gemini,
+        ProviderKind::Openrouter => &mut file.openrouter,
+        ProviderKind::Mock | ProviderKind::Ollama => {
+            return Err(anyhow!(
+                "{} does not use remote config",
+                provider_kind.as_str()
+            ))
+        }
+    };
+    if let Some(k) = api_key {
+        section.api_key = Some(k);
+    }
+    if let Some(m) = model {
+        section.model = Some(m);
+    }
+    if let Some(u) = base_url {
+        section.base_url = Some(u);
     }
     let serialized = toml::to_string_pretty(&file).context("serialize config")?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
     std::fs::write(&path, serialized).with_context(|| format!("write {}", path.display()))?;
     restrict_file_permissions(&path);
+    println!(
+        "Saved config for {} in {}",
+        provider_kind.as_str(),
+        path.display()
+    );
     Ok(())
 }
 

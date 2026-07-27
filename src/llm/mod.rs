@@ -38,6 +38,16 @@ impl AnyProvider {
             Self::Gemini(p) => p.chat(system, user).await,
         }
     }
+
+    pub async fn list_models(&self) -> Result<Vec<String>> {
+        match self {
+            Self::Mock(p) => p.list_models().await,
+            Self::Ollama(p) => p.list_models().await,
+            Self::OpenAiCompat(p) => p.list_models().await,
+            Self::Anthropic(p) => p.list_models().await,
+            Self::Gemini(p) => p.list_models().await,
+        }
+    }
 }
 
 /// Build the concrete provider from the resolved config.

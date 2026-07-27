@@ -96,4 +96,26 @@ impl GeminiProvider {
             .and_then(|c| c.content.parts.into_iter().next().map(|p| p.text))
             .ok_or_else(|| anyhow::anyhow!("gemini response had no text"))
     }
+
+    pub async fn list_models(&self) -> Result<Vec<String>> {
+        let base = self.base_url.trim_end_matches("/v1beta");
+        let url = format!("{base}/models");
+        #[derive(Deserialize)]
+        struct ListResponse {
+            models: Vec<ModelEntry>,
+        }
+        #[derive(Deserialize)]
+        struct ModelEntry {
+            name: String,
+        }
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("key", &self.api_key)])
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let parsed: ListResponse = resp.json().await?;
+        Ok(parsed.models.into_iter().map(|m| m.name).collect())
+    }
 }

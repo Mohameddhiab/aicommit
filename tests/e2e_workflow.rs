@@ -6,7 +6,7 @@ use aicommit::config::{load, Config};
 use aicommit::git::GitRepo;
 
 fn mock_config() -> Config {
-    load(Some("mock".into()), None, None, None).expect("mock config should load")
+    load(Some("mock".into()), None, None, None, None).expect("mock config should load")
 }
 
 #[test]

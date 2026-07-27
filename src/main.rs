@@ -3,7 +3,7 @@
 //! Entry point: parses the CLI (clap), loads config, dispatches to the
 //! provider-agnostic workflow defined in `main.rs`.
 
-use aicommit::{config, git, interactive, llm, parser, splitter};
+use aicommit::{banner, config, display, git, interactive, llm, parser, splitter};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use std::path::PathBuf;
@@ -33,13 +33,17 @@ pub struct Cli {
     pub no_stage: bool,
 
     /// AI provider to use. Auto-detected if omitted.
-    /// One of: ollama, openai, anthropic, groq, deepseek, mistral, gemini, openrouter.
-    #[arg(short, long, value_parser = ["mock", "ollama", "openai", "anthropic", "groq", "deepseek", "mistral", "gemini", "openrouter"])]
+    #[arg(short, long)]
     pub provider: Option<String>,
 
     /// Model override (e.g. "llama3", "gpt-4o").
     #[arg(short, long)]
     pub model: Option<String>,
+
+    /// Base URL for the provider API (e.g. http://localhost:11434,
+    /// http://localhost:8000/v1 for OpenAI-compatible local servers).
+    #[arg(long)]
+    pub base_url: Option<String>,
 
     /// Language of the generated commit message (e.g. "en", "fr").
     #[arg(long)]
@@ -48,6 +52,10 @@ pub struct Cli {
     /// Ephemeral API key. Prefer env vars or config file instead.
     #[arg(long)]
     pub api_key: Option<String>,
+
+    /// List available models from the selected provider and exit.
+    #[arg(long)]
+    pub list_models: bool,
 
     /// Subcommand (e.g. `aicommit config`).
     #[command(subcommand)]
@@ -58,13 +66,21 @@ pub struct Cli {
 pub enum Command {
     /// View or modify configuration.
     Config {
-        /// Set the API key for a provider (writes to ~/.aicommit.toml).
+        /// Set the API key for a provider.
         #[arg(long)]
         api_key: Option<String>,
 
-        /// Provider the key belongs to.
-        #[arg(long, value_parser = ["mock", "ollama", "openai", "anthropic", "groq", "deepseek", "mistral", "gemini", "openrouter"])]
+        /// Provider the key or model belongs to.
+        #[arg(long)]
         provider: Option<String>,
+
+        /// Set the default model for a provider.
+        #[arg(long)]
+        model: Option<String>,
+
+        /// Set the base URL for a provider.
+        #[arg(long)]
+        base_url: Option<String>,
 
         /// Print the resolved configuration (merged env + file + CLI).
         #[arg(long)]
@@ -74,6 +90,7 @@ pub enum Command {
 
 #[tokio::main]
 async fn main() {
+    banner::maybe_print();
     let cli = Cli::parse();
     if let Err(e) = run(cli).await {
         print_error(&e);
@@ -82,16 +99,17 @@ async fn main() {
 }
 
 fn print_error(err: &anyhow::Error) {
-    eprintln!("{} {}", "✗".red().bold(), "aicommit error".red().bold());
+    display::box_start("Error");
     let msg = format!("{err:#}");
     for line in msg.lines() {
-        if line.contains("Caused by:") {
-            eprintln!("  {}", line.dimmed());
+        let colored = if line.contains("Caused by:") {
+            format!("  {}", line.dimmed())
         } else {
-            eprintln!("  {line}");
-        }
+            format!("  {}", line)
+        };
+        display::box_line(&colored);
     }
-    eprintln!("\n  {} Run `aicommit --help` for usage.", "?".blue().bold());
+    display::box_end();
 }
 
 /// Dispatch entry. Separated from `main` for testability.
@@ -100,10 +118,36 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Some(Command::Config {
             api_key,
             provider,
+            model,
+            base_url,
             show,
-        }) => config::handle_config_command(api_key, provider, show).await,
-        None => commit_workflow(cli).await,
+        }) => config::handle_config_command(api_key, provider, model, base_url, show).await,
+        None => {
+            if cli.list_models {
+                return list_models_workflow(cli).await;
+            }
+            commit_workflow(cli).await
+        }
     }
+}
+
+/// List available models from the provider and exit.
+async fn list_models_workflow(cli: Cli) -> anyhow::Result<()> {
+    let cfg = config::load(
+        cli.provider.clone(),
+        cli.model.clone(),
+        cli.lang.clone(),
+        cli.api_key.clone(),
+        cli.base_url.clone(),
+    )?;
+    let provider = llm::build_provider(&cfg)?;
+    let models = provider.list_models().await?;
+    display::box_start(&format!("{} — Available models", provider.name()));
+    for m in &models {
+        display::box_line(&format!("◉ {m}"));
+    }
+    display::box_end();
+    Ok(())
 }
 
 /// Default workflow:
@@ -118,6 +162,7 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
         cli.model.clone(),
         cli.lang.clone(),
         cli.api_key.clone(),
+        cli.base_url.clone(),
     )?;
 
     let mut diff = git::staged_diff()?;
@@ -126,21 +171,19 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
         diff = git::staged_diff()?;
     }
     if diff.is_empty() {
-        println!(
-            "{} Nothing staged. Make some changes and `git add` first.",
-            "●".yellow()
-        );
+        display::box_start("Info");
+        display::box_line("Nothing staged. Make some changes and `git add` first.");
+        display::box_end();
         return Ok(());
     }
 
     let provider = llm::build_provider(&cfg)?;
     let line_count = diff.lines().count();
-    println!(
-        "{} {} — {} lines to analyze",
-        "▶".cyan(),
+    display::box_start(&format!(
+        "{} — {} lines to analyze",
         provider.name(),
         line_count
-    );
+    ));
 
     if cli.single || splitter::should_treat_as_single(&diff) {
         let msg = llm::generate_commit_message(&provider, &diff, &cfg).await?;
@@ -151,6 +194,7 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
             parsed.to_conventional()
         };
         do_commit(&final_msg, None, cli.dry_run)?;
+        display::box_end();
         return Ok(());
     }
 
@@ -160,14 +204,11 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
         for group in &groups {
             let gdiff = git::diff_for_group(group)?;
             let glines = gdiff.lines().count();
-            println!(
-                "  {} Group '{}' — {glines} lines to analyze",
-                "▸".cyan(),
-                group.name
-            );
+            display::box_line(&format!("◉ Group '{}' — {glines} lines", group.name));
             let msg = llm::generate_commit_message(&provider, &gdiff, &cfg).await?;
             msgs.push(msg);
         }
+        display::box_end();
         let selected = interactive::select_commits(&groups, &msgs);
         for &idx in &selected {
             let parsed = parser::parse_commit_message(&msgs[idx])?;
@@ -179,27 +220,24 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
         for group in &groups {
             let gdiff = git::diff_for_group(group)?;
             let glines = gdiff.lines().count();
-            println!(
-                "  {} Group '{}' — {glines} lines to analyze",
-                "▸".cyan(),
-                group.name
-            );
+            display::box_line(&format!("◉ Group '{}' — {glines} lines", group.name));
             let msg = llm::generate_commit_message(&provider, &gdiff, &cfg).await?;
             let parsed = parser::parse_commit_message(&msg)?;
             let final_msg = parsed.to_conventional();
             let commit_paths: Vec<PathBuf> = group.paths.iter().map(PathBuf::from).collect();
             do_commit(&final_msg, Some(&commit_paths), cli.dry_run)?;
         }
+        display::box_end();
     }
     Ok(())
 }
 
 fn do_commit(message: &str, paths: Option<&[PathBuf]>, dry_run: bool) -> anyhow::Result<()> {
     if dry_run {
-        println!("{} Would commit: {message}", "✔".green());
+        display::box_line(&format!("{} Would commit: {message}", "✔".green()));
     } else {
         git::commit(message, paths)?;
-        println!("{} Committed: {message}", "✔".green());
+        display::box_line(&format!("{} Committed: {message}", "✔".green()));
     }
     Ok(())
 }

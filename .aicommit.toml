@@ -6,7 +6,7 @@ default = "ollama"  # ollama | openai | anthropic | groq | deepseek | mistral | 
 
 [ollama]
 url = "http://localhost:11434"
-model = "qwen2.5-coder:7b"
+model = "qwen2.5-coder:0.5b"
 
 [openai]
 # api_key is read from OPENAI_API_KEY env var by default.

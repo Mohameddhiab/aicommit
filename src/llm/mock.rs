@@ -31,6 +31,10 @@ impl MockProvider {
         *idx += 1;
         Ok(resp)
     }
+
+    pub async fn list_models(&self) -> Result<Vec<String>> {
+        Ok(vec![])
+    }
 }
 
 impl Default for MockProvider {

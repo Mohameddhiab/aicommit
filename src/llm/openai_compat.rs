@@ -93,4 +93,25 @@ impl OpenAiCompatProvider {
             .map(|c| c.message.content)
             .ok_or_else(|| anyhow::anyhow!("provider response had no choices"))
     }
+
+    pub async fn list_models(&self) -> Result<Vec<String>> {
+        let url = format!("{}/models", self.base_url);
+        #[derive(Deserialize)]
+        struct ListResponse {
+            data: Vec<ModelEntry>,
+        }
+        #[derive(Deserialize)]
+        struct ModelEntry {
+            id: String,
+        }
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let parsed: ListResponse = resp.json().await?;
+        Ok(parsed.data.into_iter().map(|m| m.id).collect())
+    }
 }

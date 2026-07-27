@@ -86,4 +86,26 @@ impl AnthropicProvider {
             })
             .ok_or_else(|| anyhow::anyhow!("anthropic response had no text block"))
     }
+
+    pub async fn list_models(&self) -> Result<Vec<String>> {
+        let url = format!("{}/v1/models", self.base_url);
+        #[derive(Deserialize)]
+        struct ListResponse {
+            data: Vec<ModelEntry>,
+        }
+        #[derive(Deserialize)]
+        struct ModelEntry {
+            id: String,
+        }
+        let resp = self
+            .client
+            .get(&url)
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let parsed: ListResponse = resp.json().await?;
+        Ok(parsed.data.into_iter().map(|m| m.id).collect())
+    }
 }

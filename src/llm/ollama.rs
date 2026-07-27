@@ -90,4 +90,24 @@ impl OllamaProvider {
             .map(|m| m.content)
             .ok_or_else(|| anyhow::anyhow!("ollama response missing message"))
     }
+
+    pub async fn list_models(&self) -> Result<Vec<String>> {
+        let url = format!("{}/api/tags", self.url);
+        #[derive(Deserialize)]
+        struct TagResponse {
+            models: Vec<TagModel>,
+        }
+        #[derive(Deserialize)]
+        struct TagModel {
+            name: String,
+        }
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let parsed: TagResponse = resp.json().await?;
+        Ok(parsed.models.into_iter().map(|m| m.name).collect())
+    }
 }
