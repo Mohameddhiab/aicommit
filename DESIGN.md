@@ -1,384 +1,249 @@
-# aicommit — Design Document
+# aicommit — Design System (CLI UI/UX)
 
-## Overview
+Ce document définit le système visuel et les flux d'interaction du CLI `aicommit` : couleurs, typographie, composants, écrans d'installation, et gestion d'erreurs. Objectif : cohérence entre toutes les commandes, et une première impression (`install` → premier commit) irréprochable.
 
-`aicommit` is a CLI tool that reads staged Git diffs, sends them to an AI
-provider, and produces structured Conventional Commit messages. It's written
-in Rust with a focus on speed (no subprocess calls, native `git2` bindings,
-async HTTP) and privacy (Ollama by default, zero cloud by default).
-
-### Guiding principles
-
-1. **Local-first** — Ollama is the default provider; no API key needed.
-2. **Fast** — native Rust, libgit2 in-process, async HTTP, sub-second on small repos.
-3. **Atomic** — large diffs are split into multiple focused commits, one per
-   logical domain.
-4. **Convention over configuration** — Conventional Commits out of the box,
-   zero config needed to start.
+Basé sur les principes des [Command Line Interface Guidelines](https://clig.dev) : humain d'abord, scriptable ensuite, silencieux par défaut, jamais surprenant.
 
 ---
 
-## Module map
+## 1. Principes directeurs
 
-```
-src/
-├── main.rs         CLI entry point (clap), subcommand dispatch
-├── lib.rs          Re-exports all modules
-├── config.rs       Config loading, merging, resolution, CLI config command
-├── git.rs          git2 wrapper: diff, stage, commit, undo, status checks
-├── llm/
-│   ├── mod.rs      AnyProvider enum, factory, retry logic, generate helper
-│   ├── ollama.rs   Ollama /api/chat client
-│   ├── openai_compat.rs  OpenAI-compatible /chat/completions client
-│   ├── anthropic.rs      Anthropic Messages API client
-│   ├── gemini.rs         Gemini generateContent client
-│   └── mock.rs           Mock provider for testing
-├── parser.rs       LLM response parsing (JSON → text fallback)
-├── prompt.rs       System + user prompt construction
-├── splitter.rs     Atomic commit grouping by directory
-├── interactive.rs  Interactive commit selection + message editing
-├── display.rs      Terminal box rendering (╭─ ╰─ │)
-└── banner.rs       First-run ASCII banner
-```
+1. **Jamais destructif par surprise** — toute action qui modifie le repo (commit, reset) doit être confirmée explicitement. Annuler = ne rien faire, jamais "tout faire".
+2. **Dégradation gracieuse** — fonctionne sans couleur (`NO_COLOR`), sans TTY (CI/scripts), sur terminal étroit.
+3. **Un seul système de couleur sémantique** — la couleur porte toujours le même sens, jamais juste décorative.
+4. **La densité d'info suit l'intention** — `--dry-run` montre tout, le mode normal montre l'essentiel, `--quiet` ne montre rien sauf erreur.
 
 ---
 
-## Data flow
+## 2. Palette de couleurs sémantiques
 
-### `aicommit` (default workflow)
+| Rôle | Couleur | Usage `colored` | Exemple |
+|---|---|---|---|
+| Marque / structure | Cyan | `.cyan()` | Bordures de boîtes, banner, titres de section |
+| Succès | Vert | `.green()` | Commit réussi, check de connexion OK |
+| Erreur | Rouge | `.red().bold()` | Échec, refus, config invalide |
+| Avertissement | Jaune | `.yellow()` | Diff volumineux, provider non testé, fallback |
+| Info / secondaire | Gris (bright black) | `.dimmed()` | Métadonnées, hints, stats de fichiers |
+| Sélection active | Magenta | `.magenta().bold()` | Item survolé/coché dans un `MultiSelect` |
+| Texte principal | Blanc/défaut | — | Messages de commit, contenu |
 
-```
-User runs `aicommit`
-    │
-    ▼
-main()
-    ├── banner::maybe_print()         (once, first launch only)
-    ├── Cli::parse()                  (clap)
-    ├── git::ensure_in_repo()         (fail fast if not in a git repo)
-    │
-    ▼
-commit_workflow()
-    │
-    ├── config::load(cli)             (CLI → env → .aicommit.toml → global → defaults)
-    ├── GitRepo::from_current_dir()
-    ├── GitRepo::is_operation_in_progress()
-    │      └── merge/rebase/bisect/cherry-pick → abort with message
-    │
-    ├── GitRepo::staged_diff()
-    │      └── empty + no --no-stage → GitRepo::stage_all() → diff again
-    │      └── still empty → "nothing to commit" message
-    │
-    ├── llm::build_provider(&cfg)
-    │
-    ├── should_treat_as_single(&diff)?
-    │   ├── YES ──→ llm::generate_commit_message() ──→ parse ──→ commit
-    │   │              ├── chat_with_retry() (3 attempts)
-    │   │              ├── parse_commit_message() (JSON → text fallback)
-    │   │              └── format_with_template(cfg.commit_template)
-    │   │
-    │   └── NO ───→ splitter::group_by_directory(diff, max, exclude)
-    │                for each group:
-    │                  ├── git::diff_for_group(group)
-    │                  ├── llm::generate_commit_message()
-    │                  ├── parse ──→ format_with_template
-    │                  └── commit (scoped to group paths)
-    │
-    └── do_commit()
-           ├── dry-run → print "Would commit: ..."
-           └── real   → GitRepo::commit(message, paths)
-```
+**Règle stricte** : jamais deux couleurs différentes pour le même type d'info entre deux commandes. Si `git.rs` affiche une erreur, elle doit avoir le même style qu'une erreur de `llm/mod.rs`.
 
-### `aicommit undo`
-
-```
-main() → Cli::parse() → Command::Undo
-    git::ensure_in_repo()
-    GitRepo::undo_last_commit()    (git reset --soft HEAD~1)
-```
-
-### `aicommit config --provider X --api-key Y`
-
-```
-main() → Cli::parse() → Command::Config
-    config::handle_config_command()
-        ├── reads existing global config
-        ├── overwrites provider section (api_key, model, base_url)
-        └── writes to ~/.config/aicommit/config.toml
-```
-
----
-
-## Configuration resolution
-
-Priority (highest → lowest):
-
-1. **CLI flags** (`--provider`, `--model`, `--lang`, `--api-key`, `--base-url`, `--timeout`)
-2. **Environment variables** (per-provider API keys from `ProviderKind::env_var()`)
-3. **Project config** (`./.aicommit.toml`)
-4. **Global config** (`~/.config/aicommit/config.toml`)
-5. **Hardcoded defaults**
-
-### Provider auto-detection
-
-If no provider is specified via CLI or config file, `resolve_provider()` tries:
-
-1. Check if Ollama is reachable (`GET /api/tags`, 3s timeout) → use Ollama
-2. Scan env vars for any known API key → use that provider
-3. Error with setup instructions
-
-### Config merging
-
-`ConfigFile` uses `Option<T>` for all fields. The `merge_files()` function
-overlays project config on top of global config by replacing `Some` values.
-CLI overrides are applied by chaining `.or()` / `.unwrap_or()` in `load()`.
-
-**Key decision**: Empty/invalid values in a lower-priority file never
-overwrite valid values from a higher-priority file, because all fields are
-`Option` and only `Some` values propagate.
-
----
-
-## LLM provider architecture
-
-### Dispatch enum (no trait objects)
-
-Providers use a flat enum + match dispatch rather than `Box<dyn ProviderTrait>`:
+**Accessibilité** : respecter `NO_COLOR` (variable d'env standard) et détecter le TTY. Ajouter au démarrage dans `main.rs` :
 
 ```rust
-pub enum AnyProvider {
-    Mock(mock::MockProvider),
-    Ollama(ollama::OllamaProvider),
-    OpenAiCompat(openai_compat::OpenAiCompatProvider),
-    Anthropic(anthropic::AnthropicProvider),
-    Gemini(gemini::GeminiProvider),
+if std::env::var("NO_COLOR").is_ok() || !std::io::stdout().is_terminal() {
+    colored::control::set_override(false);
 }
 ```
 
-**Rationale**: Simplicity, no vtable overhead, no `async_trait` dependency,
-exhaustive matching in the IDE.
+Et exposer un flag explicite `--no-color` dans `clap` qui fait pareil (override manuel prioritaire sur l'auto-détection).
 
-### Provider interfaces
+---
 
-Every provider exposes two methods through the enum:
+## 3. Iconographie
 
-| Method | Signature | Purpose |
+| Symbole | Sens | Fallback ASCII (si `--ascii` ou terminal non-Unicode) |
 |---|---|---|
-| `chat` | `(&self, system: &str, user: &str) -> Result<String>` | Send prompts, return raw response text |
-| `list_models` | `(&self) -> Result<Vec<String>>` | List available models (used by `--list-models`) |
-
-### Retry strategy: `chat_with_retry()`
-
-- **3 attempts** with exponential backoff (1s, 2s, 4s).
-- Retries on: 429 Too Many Requests, 503 Service Unavailable, timeout,
-  connection errors (dns, refused, reset).
-- Non-transient errors (401, 403, 400, 404) fail fast with a clear message.
-
-### Parse retry: `do_generate()`
-
-After a successful API call, if the response can't be parsed as a
-`CommitMessage`, a stricter repair prompt is sent (one retry). The repair
-prompt includes the JSON schema and the parse error.
+| `✓` | Succès | `[OK]` |
+| `✗` | Erreur | `[X]` |
+| `⚠` | Avertissement | `[!]` |
+| `ℹ` | Info | `[i]` |
+| `●` / `○` | Sélectionné / non-sélectionné | `[x]` / `[ ]` |
+| `→` | Action suivante / hint | `->` |
+| `⋯` (via `indicatif`) | Chargement | `...` |
 
 ---
 
-## Commit splitting algorithm
+## 4. Composant Boîte (fix du bug d'alignement)
 
-### `group_by_directory(diff, max_groups, exclude_patterns)`
+Le composant actuel (`display.rs`) casse sur Unicode multi-byte et ne s'adapte pas à la largeur du terminal. Nouvelle spec :
 
-1. Extract file paths from `diff --git a/X b/Y` headers.
-2. Skip paths matching any glob in `exclude_patterns` (uses `glob::Pattern`).
-3. Assign each file to a bucket via `group_key(path)`:
-   - Repo root files → `"root"`
-   - `src/auth/login.rs` (3+ components) → `"auth"` (2nd component)
-   - `src/main.rs` (2 components) → `"src"` (1st component)
-   - `assets/icons/close.svg` → `"icons"` (2nd component)
-4. If all files → one bucket, return single group named `"root"`.
-5. If buckets > `max_groups` (default 3), keep largest `max_groups - 1`
-   groups and merge the rest into `"misc"`.
-6. Sort groups by file count descending.
+- Ajouter la dépendance `unicode-width = "0.1"` pour calculer la largeur d'affichage réelle, pas `.len()` en bytes.
+- Ajouter `terminal_size = "0.3"` pour lire la largeur du terminal ; largeur de boîte = `min(terminal_width - 2, 76)`, minimum `40`.
+- Si le contenu dépasse la largeur dispo, tronquer avec `…` plutôt que de casser l'alignement.
 
-### `should_treat_as_single(diff)`
-
-Returns `true` if diff has ≤ 1 `diff --git` header (one file changed).
-Bypasses the splitter entirely.
+```
+╭─ Dry run — 3 groups detected ──────────────────────────────╮
+│  ● feat(auth)   3 files   +142 -8    Add JWT refresh flow  │
+│  ● fix(api)     1 file    +6   -2    Fix null check in...  │
+│  ○ chore(deps)  2 files   +12  -0    Bump reqwest to 0.12  │
+╰──────────────────────────────────────────────────────────────╯
+```
 
 ---
 
-## Parsing strategy
+## 5. États de sortie (output states)
 
-### Two-phase parser
+Chaque état a un format fixe : **symbole + couleur + message court + détail optionnel en dimmed en dessous.**
 
-1. **JSON first**:
-   - Strip markdown fences (` ```json `, ` ``` `) and surrounding prose.
-   - Find first `{` and last `}`, deserialize with `serde_json`.
-   - Schema: `{ "type": str, "scope": str?, "description": str, "body": str? }`
+**Succès**
+```
+✓ Committed 3 groups (feat(auth), fix(api), chore(deps))
+```
 
-2. **Text fallback** (if JSON parsing fails):
-   - Parse `type(scope): description` from the first non-empty line.
-   - Remaining lines become the body.
+**Erreur** — toujours 3 lignes : quoi / pourquoi / comment corriger.
+```
+✗ Failed to reach Anthropic API
+  → Invalid API key (401 Unauthorized)
+  → Run `aicommit config set anthropic.api_key <key>` to fix
+```
 
-3. **Validation**:
-   - `type` must be in `ALLOWED_TYPES`: `feat`, `fix`, `docs`, `style`,
-     `refactor`, `perf`, `test`, `build`, `ci`, `chore`.
-   - `description` ≤ 120 chars, non-empty.
+**Avertissement**
+```
+⚠ Diff is large (2,400 lines) — truncating to fit model context
+```
 
-### Template formatting
-
-`CommitMessage::format_with_template(template)` replaces placeholders in the
-commit template from `.aicommit.toml`:
-
-| Placeholder | Source |
-|---|---|
-| `{type}` | `kind` field |
-| `{scope}` | `scope` field (empty string if None) |
-| `{description}` | `description` field |
-| `{body}` | `body` field (empty string if None) |
-| `{emoji}` | Emoji mapped from `kind` (feat → ✨, fix → 🐛, etc.) |
-
-Default template: `{type}{scope}: {description}`
-
-If the template does not contain `{body}` but a body exists, it is
-automatically appended after a blank line.
+**Chargement** (via `indicatif`, pas de print manuel) — spinner cyan + verbe au gérondif :
+```
+⠋ Analyzing changes...
+⠙ Generating commit messages...
+```
 
 ---
 
-## Prompt design
+## 6. Flux interactifs (corrections incluses)
 
-### System prompt
+### 6.1 Sélection multi-commit — fix du bug Ctrl+C
 
-Builds a strict instruction set including:
+Règle : **annuler (Esc/Ctrl+C) doit annuler**, pas "tout sélectionner". Séparer explicitement les 3 issues possibles :
 
-- Conventional Commits specification
-- Allowed types list
-- JSON output schema with field descriptions
-- Formatting rules (imperative, lowercase, max 72 chars, no trailing period)
-- Optional language clause (`Write in {lang}.`)
+```rust
+// Note: Group needs new fields (file_count, insertions, deletions) in splitter.rs
+pub fn select_commits(groups: &[Group], msgs: &[String]) -> SelectResult {
+    let items: Vec<String> = groups.iter().zip(msgs.iter())
+        .map(|(g, m)| format!("{}  {m}  ({} files, +{} -{})",
+            g.name, g.file_count, g.insertions, g.deletions))
+        .collect();
 
-### User prompt
+    match dialoguer::MultiSelect::new()
+        .with_prompt("Select commits to apply  [space: toggle, a: all, enter: confirm, esc: cancel]")
+        .items(&items)
+        .interact_opt()          // <- Option, pas de unwrap silencieux
+    {
+        Ok(Some(sel)) if sel.is_empty() => SelectResult::None,   // explicitement rien coché
+        Ok(Some(sel)) => SelectResult::Some(sel),
+        Ok(None) | Err(_) => SelectResult::Cancelled,             // esc/ctrl+c
+    }
+}
+```
+- `Cancelled` → sortie propre, code retour non-zéro, rien n'est commité, message `✗ Cancelled — no commits created`.
+- `None` (0 coché + confirmé volontairement) → même comportement que `Cancelled`, pas "tout".
+- Affichage enrichi : nombre de fichiers + stats +/- pour aider la décision, comme dans la boîte dry-run ci-dessus.
 
-Wraps the compressed diff in a markdown code block with the instruction
-to produce exactly one commit message in the required JSON schema.
+### 6.2 Éditeur de message
+Garder `dialoguer::Input` mais ajouter un hint sous le prompt :
+```
+Commit message (edit or press enter to accept):
+> feat(auth): add JWT refresh token flow
+```
 
-### Diff compression (`compress_diff`)
-
-| Limit | Value |
-|---|---|
-| Per-file max | 8,000 bytes |
-| Total max | 30,000 bytes |
-| Truncation marker | `... [truncated by aicommit] ...` |
-
-Binary file lines are dropped.
-
----
-
-## Git integration
-
-### `GitRepo` (wraps `git2::Repository`)
-
-| Operation | git2 API |
-|---|---|
-| Open repo | `Repository::discover(path)` |
-| Head tree | `repo.head()?.peel_to_tree()` or empty tree `4b825dc642` |
-| Staged diff | `diff_tree_to_index(Some(&head), &index, None)` |
-| Stage all | `index.add_all(["*"], DEFAULT, None)` |
-| Stage paths | `index.add_path(p)` for each |
-| Commit | `index.write_tree()` → `repo.find_tree()` → `repo.commit()` |
-| Undo last | `repo.head().peel_to_commit()` → `repo.reset(parent, Soft)` |
-| In-progress check | Detect `MERGE_HEAD`, `REBASE_HEAD`, `BISECT_LOG`, `CHERRY_PICK_HEAD` |
-| Per-group diff | `diff_tree_to_index()` with `pathspec` filter |
-
-### Signature
-
-Uses `repo.signature()` (reads `user.name` / `user.email` from Git config).
-Falls back to `"aicommit" <aicommit@users.noreply.github.com>`.
+### 6.3 Confirmation avant action destructive
+Toute commande qui touche l'historique (`undo`, `--force`) passe par `dialoguer::Confirm` avec `default(false)` explicite — jamais `default(true)` sur une action destructive.
 
 ---
 
-## Interactive mode
+## 7. Expérience d'installation & premier lancement
 
-### `select_commits(groups, messages)`
+Objectif : de `cargo install aicommit` / `brew install` au premier commit réussi, sans lire de doc.
 
-- `dialoguer::MultiSelect` with entries formatted as `[group_name]  message`.
-- Empty selection defaults to ALL groups (users who press Enter without
-  selecting anything commit everything).
+**Étape 1 — Install (package manager)**
+Sortie standard du gestionnaire de paquets, rien à designer côté aicommit ici.
 
-### `edit_message(msg)`
+**Étape 2 — Premier `aicommit` lancé dans un repo git**
 
-- `dialoguer::Input` with `with_initial_text(msg)`.
-- Returns the edited message.
+```
+╭──────────────────────────────────────────╮
+│  █████╗ ██╗ ██████╗ ██████╗ ███╗   ███╗ │
+│  ...                                      │
+│  v0.3.1 — AI-powered Git commits          │
+╰──────────────────────────────────────────╯
 
----
+ℹ No provider configured yet. Let's set one up.
 
-## CLI structure
+? Choose your provider  [use arrows, enter to select]
+❯ ● Ollama (local, free, private) — recommended
+  ○ Anthropic (Claude)
+  ○ OpenAI (GPT)
+  ○ Gemini
+  ○ Groq / Mistral / Cohere / OpenRouter
 
-### Flags
+  → Local providers need no API key and never send code off your machine.
+```
 
-| Flag | Type | Default |
-|---|---|---|
-| `--single` / `-1` | bool | `false` |
-| `--interactive` / `-i` | bool | `false` |
-| `--dry-run` / `-n` / `--print-only` | bool | `false` |
-| `--no-stage` | bool | `false` |
-| `--provider` | `Option<String>` | `None` |
-| `--model` | `Option<String>` | `None` |
-| `--base-url` | `Option<String>` | `None` |
-| `--lang` | `Option<String>` | `None` |
-| `--api-key` | `Option<String>` | `None` |
-| `--timeout` | `u64` | `120` |
-| `--list-models` | bool | `false` |
+Si Ollama choisi et non détecté :
+```
+⚠ Ollama not reachable at http://localhost:11434
+  → Install: https://ollama.com/download
+  → Or press [b] to go back and pick a cloud provider
+```
 
-### Subcommands
+Si provider cloud choisi :
+```
+? Paste your Anthropic API key: ****************************
+⋯ Testing connection...
+✓ Connected — using claude-sonnet-4-6
+✓ Saved to ~/.config/aicommit/config.toml (permissions 600)
+```
 
-| Command | Action |
-|---|---|
-| `config --provider X --api-key Y` | Write API key to global config |
-| `config --show` | Print resolved config |
-| `undo` | `git reset --soft HEAD~1` |
+**Étape 3 — Premier commit réel** : enchaîne directement sur le flux normal (dry-run → sélection → commit), pas d'écran supplémentaire. Le setup ne doit jamais être un mur séparé de l'usage réel.
 
----
+**Règle générale install** : le wizard ne se relance jamais automatiquement une fois configuré. `aicommit config wizard` permet de le relancer à la demande.
 
-## Known design limitations
+**Détection CI** : si `CI` ou `GITHUB_ACTIONS` est présent dans l'environnement, le wizard est automatiquement skipé (pas de TTY).
 
-1. **Unicode box alignment**: `display.rs` uses byte length (`.len()`) instead
-   of display width for padding. Multi-byte characters and emoji break the
-   box borders.
-
-2. **Banner version hardcoded**: `banner.rs` contains a hardcoded version
-   string (`v0.2.0`) that drifts from `Cargo.toml`.
-
-3. **Interactive panic on Ctrl+C**: `dialoguer::MultiSelect::interact()`
-   unwraps rather than handling interruption gracefully.
-
-4. **No streaming**: LLM responses are awaited in full before displaying.
-   Streaming (SSE) would improve perceived latency.
-
-5. **No diff preview**: The splitter shows group names but not the actual
-   diff content before committing.
+**Sentinel** : fichier `~/.config/aicommit/.config-done` créé après le premier wizard. Sa présence skip le wizard au prochain lancement.
 
 ---
 
-## Security
+## 8. Structure de l'aide (`--help`)
 
-- `#![deny(unsafe_code)]` at the crate root.
-- API keys stored in `~/.config/aicommit/config.toml` (file permissions set
-  to 0600 on Unix).
-- No telemetry, no analytics, no network calls except to the chosen provider.
+Format court, groupé par intention (pas alphabétique) :
+
+```
+aicommit — AI-powered, atomic Git commits
+
+USAGE:
+  aicommit [OPTIONS]
+  aicommit <COMMAND>
+
+COMMANDS:
+  config     Manage provider and behavior settings
+  undo       Revert the last aicommit-generated commit
+  wizard     Re-run the interactive setup
+
+OPTIONS:
+  --dry-run       Preview commits without applying them
+  --single        Force a single commit, skip atomic splitting
+  --yes           Skip interactive selection, apply all groups
+  --provider <p>  AI provider (ollama, openai, anthropic, ...)
+  --model <m>     Model override (e.g. gpt-4o, qwen2.5-coder:7b)
+  --no-color      Disable colored output
+  --quiet         Only print errors
+  -h, --help      Print help
+  -V, --version   Print version
+
+Run `aicommit` inside a git repo with staged/unstaged changes to get started.
+```
 
 ---
 
-## Dependencies
+## 9. Checklist d'implémentation
 
-| Crate | Purpose |
-|---|---|
-| `clap` | CLI argument parsing |
-| `git2` | libgit2 bindings (in-process git operations) |
-| `reqwest` | Async HTTP client (TLS via `rustls`) |
-| `tokio` | Async runtime |
-| `serde` / `serde_json` | JSON serialization/deserialization |
-| `toml` | Config file parsing |
-| `colored` | Terminal coloring |
-| `dialoguer` | Interactive prompts (MultiSelect, Input) |
-| `anyhow` / `thiserror` | Error handling |
-| `glob` | Exclude pattern matching in splitter |
-| `dirs` | Platform config directory paths |
-| `async-trait` | Trait support (currently unused — provider dispatch is enum-based) |
+| Fix | Fichier | Priorité | Effort |
+|---|---|---|---|---|
+| Ctrl+C ne doit plus committer "tout" | `interactive.rs` | 🔴 Critique | S — 1h |
+| Padding boîtes en largeur d'affichage (`unicode-width`) | `display.rs` | 🔴 Critique | S — 1h |
+| Version dynamique (`env!("CARGO_PKG_VERSION")`) | `banner.rs` | 🟡 Rapide | S — 30min |
+| Respect `NO_COLOR` + flag `--no-color` | `main.rs` | 🟡 Rapide | S — 1h |
+| Largeur de boîte adaptative (`terminal_size`) | `display.rs` | 🟢 Moyen | M — 2h |
+| Stats fichiers/lignes dans le sélecteur | `interactive.rs`, `splitter.rs` | 🟢 Moyen | M — 2h |
+| Wizard de setup au premier lancement | nouveau `src/wizard.rs` | 🟢 Moyen | L — 5h |
+| Format d'erreur standardisé (quoi/pourquoi/fix) | `main.rs` + tous les modules | 🟢 Moyen | M — 3h |
+| `--help` restructuré par intention | `main.rs` (clap) | 🔵 Nice-to-have | S — 1h |
+
+---
+
+## 10. Ce qui ne change pas
+
+Le style boîtes-Unicode + cyan est déjà une identité visuelle correcte et reconnaissable — on la garde et on la corrige, on ne la réinvente pas.
