@@ -5,6 +5,7 @@
 <div align="center">
 
 [![CI](https://github.com/Mohameddhiab/git-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohameddhiab/git-doctor/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/git-doctor.svg)](https://crates.io/crates/git-doctor)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Rust](https://img.shields.io/badge/rust-2021-orange.svg)
 
