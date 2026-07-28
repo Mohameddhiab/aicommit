@@ -76,10 +76,9 @@ impl AnthropicProvider {
             let txt = resp.text().await.unwrap_or_default();
             if status == 401 {
                 anyhow::bail!(
-                    "invalid Anthropic API key (401 Unauthorized).\n\
-                     Set the correct key via:\n  \
-                     aicommit config --provider anthropic --api-key <key>\n  \
-                     or the ANTHROPIC_API_KEY environment variable"
+                    "authentication failed (401 Unauthorized)\n\
+                     → check your ANTHROPIC_API_KEY is correct\n\
+                     → set it with: aicommit config --provider anthropic --api-key <key>"
                 );
             }
             anyhow::bail!("anthropic returned {status}: {txt}");

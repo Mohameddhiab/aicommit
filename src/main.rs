@@ -18,53 +18,57 @@ use std::path::PathBuf;
 )]
 pub struct Cli {
     /// Force a single commit (skip atomic split).
-    #[arg(short = '1', long)]
+    #[arg(short = '1', long, help_heading = "Workflow")]
     pub single: bool,
 
     /// Interactive mode: edit the message before committing.
-    #[arg(short, long)]
+    #[arg(short, long, help_heading = "Workflow")]
     pub interactive: bool,
 
     /// Dry-run: generate and print the message(s) without committing.
-    #[arg(short = 'n', long, alias = "print-only")]
+    #[arg(short = 'n', long, alias = "print-only", help_heading = "Workflow")]
     pub dry_run: bool,
 
     /// Disable auto-staging (aicommit stages all changes by default).
-    #[arg(long)]
+    #[arg(long, help_heading = "Workflow")]
     pub no_stage: bool,
 
     /// AI provider to use. Auto-detected if omitted.
-    #[arg(short, long)]
+    #[arg(short, long, help_heading = "Provider")]
     pub provider: Option<String>,
 
     /// Model override (e.g. "llama3", "gpt-4o").
-    #[arg(short, long)]
+    #[arg(short, long, help_heading = "Provider")]
     pub model: Option<String>,
 
     /// Base URL for the provider API (e.g. http://localhost:11434,
     /// http://localhost:8000/v1 for OpenAI-compatible local servers).
-    #[arg(long)]
+    #[arg(long, help_heading = "Provider")]
     pub base_url: Option<String>,
 
     /// Language of the generated commit message (e.g. "en", "fr").
-    #[arg(long)]
+    #[arg(long, help_heading = "Provider")]
     pub lang: Option<String>,
 
     /// Ephemeral API key. Prefer env vars or config file instead.
-    #[arg(long)]
+    #[arg(long, help_heading = "Provider")]
     pub api_key: Option<String>,
 
     /// Timeout in seconds for API calls (default: 120).
-    #[arg(long, default_value_t = 120)]
+    #[arg(long, default_value_t = 120, help_heading = "Provider")]
     pub timeout: u64,
 
+    /// List available models from the selected provider and exit.
+    #[arg(long, help_heading = "Provider")]
+    pub list_models: bool,
+
     /// Disable colored output.
-    #[arg(long)]
+    #[arg(long, help_heading = "Display")]
     pub no_color: bool,
 
-    /// List available models from the selected provider and exit.
-    #[arg(long)]
-    pub list_models: bool,
+    /// Quiet mode: only print errors.
+    #[arg(short, long, help_heading = "Display")]
+    pub quiet: bool,
 
     /// Subcommand (e.g. `aicommit config`).
     #[command(subcommand)]
@@ -121,17 +125,27 @@ async fn main() {
 }
 
 fn print_error(err: &anyhow::Error) {
-    display::box_start("Error");
     let msg = format!("{err:#}");
-    for line in msg.lines() {
-        let colored = if line.contains("Caused by:") {
-            format!("  {}", line.dimmed())
-        } else {
-            format!("  {}", line)
-        };
-        display::box_line(&colored);
+    let lines: Vec<&str> = msg.lines().collect();
+    if lines.len() <= 2 {
+        display::box_start("Error");
+        for line in &lines {
+            display::box_line(&format!("  {}", line));
+        }
+        display::box_end();
+    } else {
+        display::box_start("Error");
+        display::box_line(&format!("  {}", lines[0]));
+        for line in &lines[1..] {
+            let prefix = if line.contains("Caused by:") || line.contains("→") {
+                "    "
+            } else {
+                "  "
+            };
+            display::box_line(&format!("{}{}", prefix.dimmed(), line));
+        }
+        display::box_end();
     }
-    display::box_end();
 }
 
 /// Dispatch entry. Separated from `main` for testability.

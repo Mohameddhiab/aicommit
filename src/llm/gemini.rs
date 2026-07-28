@@ -88,10 +88,9 @@ impl GeminiProvider {
             let txt = resp.text().await.unwrap_or_default();
             if status == 403 || status == 400 {
                 anyhow::bail!(
-                    "invalid Gemini API key (HTTP {status}).\n\
-                     Set the correct key via:\n  \
-                     aicommit config --provider gemini --api-key <key>\n  \
-                     or the GOOGLE_API_KEY environment variable"
+                    "authentication failed (HTTP {status})\n\
+                     → check your GOOGLE_API_KEY is correct\n\
+                     → set it with: aicommit config --provider gemini --api-key <key>"
                 );
             }
             anyhow::bail!("gemini returned {status}: {txt}");

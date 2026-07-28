@@ -78,7 +78,13 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 .remote
                 .api_key
                 .clone()
-                .ok_or_else(|| anyhow!("missing API key for {}", cfg.provider.as_str()))?;
+                .ok_or_else(|| {
+                    anyhow!(
+                        "missing API key for {}\n→ set it with: aicommit config --provider {} --api-key <key>",
+                        cfg.provider.as_str(),
+                        cfg.provider.as_str()
+                    )
+                })?;
             let model = cfg
                 .remote
                 .model
@@ -98,7 +104,11 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 .remote
                 .api_key
                 .clone()
-                .ok_or_else(|| anyhow!("missing ANTHROPIC_API_KEY"))?;
+                .ok_or_else(|| {
+                    anyhow!(
+                        "missing ANTHROPIC_API_KEY\n→ set it with: aicommit config --provider anthropic --api-key <key>"
+                    )
+                })?;
             let model = cfg
                 .remote
                 .model
@@ -118,7 +128,11 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 .remote
                 .api_key
                 .clone()
-                .ok_or_else(|| anyhow!("missing GOOGLE_API_KEY"))?;
+                .ok_or_else(|| {
+                    anyhow!(
+                        "missing GOOGLE_API_KEY\n→ set it with: aicommit config --provider gemini --api-key <key>"
+                    )
+                })?;
             let model = cfg
                 .remote
                 .model

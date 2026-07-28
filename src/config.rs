@@ -364,9 +364,9 @@ fn resolve_provider(
         }
     }
     Err(anyhow!(
-        "no AI provider configured. \
-         Run `aicommit config --provider <name> --api-key <key>` to set one, \
-         or install Ollama from https://ollama.com"
+        "no AI provider configured\n\
+         → run: aicommit config --provider <name> --api-key <key>\n\
+         → or install Ollama from https://ollama.com"
     ))
 }
 
