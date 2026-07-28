@@ -1,6 +1,6 @@
 [package]
 name = "aicommit"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Generates perfect, atomic Git commits using AI — fast, local, reliable"
 license = "MIT"
