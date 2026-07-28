@@ -1,33 +1,47 @@
-//! Styled boxed output for a modern terminal UI.
-
 use colored::Colorize;
+use unicode_width::UnicodeWidthStr;
 
-/// Print a box header like `╭─ title ───────────────────────────╮`
+const MIN_WIDTH: usize = 40;
+const MAX_WIDTH: usize = 76;
+
+fn term_width() -> usize {
+    terminal_size::terminal_size()
+        .map(|(w, _)| (w.0 as usize).saturating_sub(2).clamp(MIN_WIDTH, MAX_WIDTH))
+        .unwrap_or(MAX_WIDTH)
+}
+
 pub fn box_start(title: &str) {
-    let line = format!("╭─ {title} ");
-    let padding = 60usize.saturating_sub(line.len());
-    let s = format!(
-        "{}{}",
-        line.cyan().bold(),
-        "─".repeat(padding).cyan().bold()
+    let w = term_width();
+    let title_w = title.width();
+    let prefix = "╭─ ";
+    let dash_count = w.saturating_sub(2 + title_w);
+    let line = format!(
+        "{}{}{}",
+        format!("{prefix}{title}").cyan().bold(),
+        "─".repeat(dash_count).cyan().bold(),
+        "╮".cyan().bold()
     );
-    println!("{s}");
+    println!("{line}");
 }
 
-/// Print a content line inside a box like `│  content  │`
 pub fn box_line(content: &str) {
-    let line = format!("│  {content}");
-    let padding = 62usize.saturating_sub(line.len());
-    println!("{}{}│", line, " ".repeat(padding));
+    let w = term_width();
+    let inner = content.width();
+    let pad = w.saturating_sub(4 + inner);
+    println!(
+        "{}{}{}│",
+        "│  ".cyan().bold(),
+        content,
+        " ".repeat(pad)
+    );
 }
 
-/// Print a box footer like `╰──────────────────────────────────────╯`
 pub fn box_end() {
-    let s = format!(
+    let w = term_width();
+    println!(
         "{}{}{}",
         "╰".cyan().bold(),
-        "─".repeat(61).cyan().bold(),
+        "─".repeat(w).cyan().bold(),
         "╯".cyan().bold()
     );
-    println!("{s}");
 }

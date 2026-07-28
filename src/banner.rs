@@ -3,16 +3,14 @@
 use colored::Colorize;
 use std::path::PathBuf;
 
-const BANNER: &str = r"
+const BANNER_HEAD: &str = r"
 ╭──────────────────────────────────────────╮
 │  █████╗ ██╗ ██████╗ ██████╗ ███╗   ███╗ │
 │ ██╔══██╗██║██╔════╝██╔═══██╗████╗ ████║ │
 │ ███████║██║██║     ██║   ██║██╔████╔██║ │
 │ ██╔══██║██║██║     ██║   ██║██║╚██╔╝██║ │
 │ ██║  ██║██║╚██████╗╚██████╔╝██║ ╚═╝ ██║ │
-│ ╚═╝  ╚═╝╚═╝ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝ │
-│  v0.2.0 — AI-powered Git commits         │
-╰──────────────────────────────────────────╯";
+│ ╚═╝  ╚═╝╚═╝ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝ │";
 
 fn sentinel_path() -> PathBuf {
     dirs::config_dir()
@@ -36,9 +34,15 @@ pub fn maybe_print() {
     if was_shown() {
         return;
     }
-    for line in BANNER.lines() {
+    let version = env!("CARGO_PKG_VERSION");
+    for line in BANNER_HEAD.lines() {
         println!("{}", line.cyan());
     }
+    println!(
+        "{}",
+        format!("│  v{version} — AI-powered Git commits         │").cyan()
+    );
+    println!("{}", "╰──────────────────────────────────────────╯".cyan());
     println!();
     mark_shown();
 }
