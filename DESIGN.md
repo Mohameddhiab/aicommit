@@ -1,6 +1,6 @@
-# aicommit — Design System (CLI UI/UX)
+# git-doctor — Design System (CLI UI/UX)
 
-Ce document définit le système visuel et les flux d'interaction du CLI `aicommit` : couleurs, typographie, composants, écrans d'installation, et gestion d'erreurs. Objectif : cohérence entre toutes les commandes, et une première impression (`install` → premier commit) irréprochable.
+Ce document définit le système visuel et les flux d'interaction du CLI `doctor` : couleurs, typographie, composants, écrans d'installation, et gestion d'erreurs. Objectif : cohérence entre toutes les commandes, et une première impression (`init` → premier diagnostic) irréprochable.
 
 Basé sur les principes des [Command Line Interface Guidelines](https://clig.dev) : humain d'abord, scriptable ensuite, silencieux par défaut, jamais surprenant.
 
@@ -8,7 +8,7 @@ Basé sur les principes des [Command Line Interface Guidelines](https://clig.dev
 
 ## 1. Principes directeurs
 
-1. **Jamais destructif par surprise** — toute action qui modifie le repo (commit, reset) doit être confirmée explicitement. Annuler = ne rien faire, jamais "tout faire".
+1. **Jamais destructif par surprise** — toute action qui modifie l'historique (apply, undo) doit être confirmée explicitement. Backup automatique avant apply.
 2. **Dégradation gracieuse** — fonctionne sans couleur (`NO_COLOR`), sans TTY (CI/scripts), sur terminal étroit.
 3. **Un seul système de couleur sémantique** — la couleur porte toujours le même sens, jamais juste décorative.
 4. **La densité d'info suit l'intention** — `--dry-run` montre tout, le mode normal montre l'essentiel, `--quiet` ne montre rien sauf erreur.
@@ -20,14 +20,14 @@ Basé sur les principes des [Command Line Interface Guidelines](https://clig.dev
 | Rôle | Couleur | Usage `colored` | Exemple |
 |---|---|---|---|
 | Marque / structure | Cyan | `.cyan()` | Bordures de boîtes, banner, titres de section |
-| Succès | Vert | `.green()` | Commit réussi, check de connexion OK |
-| Erreur | Rouge | `.red().bold()` | Échec, refus, config invalide |
-| Avertissement | Jaune | `.yellow()` | Diff volumineux, provider non testé, fallback |
+| Succès | Vert | `.green()` | Commit réussi, plan appliqué, check OK |
+| Erreur | Rouge | `.red().bold()` | Échec, refus, config invalide, commit bloqué |
+| Avertissement / note | Jaune | `.yellow()` | WIP détecté, commit vague, oversized |
 | Info / secondaire | Gris (bright black) | `.dimmed()` | Métadonnées, hints, stats de fichiers |
 | Sélection active | Magenta | `.magenta().bold()` | Item survolé/coché dans un `MultiSelect` |
-| Texte principal | Blanc/défaut | — | Messages de commit, contenu |
+| Texte principal | Blanc/défaut | — | Messages de commit, scores, contenu |
 
-**Règle stricte** : jamais deux couleurs différentes pour le même type d'info entre deux commandes. Si `git.rs` affiche une erreur, elle doit avoir le même style qu'une erreur de `llm/mod.rs`.
+**Règle stricte** : jamais deux couleurs différentes pour le même type d'info entre deux commandes. Si `git.rs` affiche une erreur, elle doit avoir le même style qu'une erreur de `analyze.rs`.
 
 **Accessibilité** : respecter `NO_COLOR` (variable d'env standard) et détecter le TTY. Ajouter au démarrage dans `main.rs` :
 
@@ -43,11 +43,11 @@ Et exposer un flag explicite `--no-color` dans `clap` qui fait pareil (override 
 
 ## 3. Iconographie
 
-| Symbole | Sens | Fallback ASCII (si `--ascii` ou terminal non-Unicode) |
+| Symbole | Sens | Fallback ASCII |
 |---|---|---|
 | `✓` | Succès | `[OK]` |
-| `✗` | Erreur | `[X]` |
-| `⚠` | Avertissement | `[!]` |
+| `✗` | Erreur / bloqué | `[X]` |
+| `⚠` | Avertissement (WIP, vague) | `[!]` |
 | `ℹ` | Info | `[i]` |
 | `●` / `○` | Sélectionné / non-sélectionné | `[x]` / `[ ]` |
 | `→` | Action suivante / hint | `->` |
@@ -55,19 +55,17 @@ Et exposer un flag explicite `--no-color` dans `clap` qui fait pareil (override 
 
 ---
 
-## 4. Composant Boîte (fix du bug d'alignement)
+## 4. Composant Boîte
 
-Le composant actuel (`display.rs`) casse sur Unicode multi-byte et ne s'adapte pas à la largeur du terminal. Nouvelle spec :
-
-- Ajouter la dépendance `unicode-width = "0.1"` pour calculer la largeur d'affichage réelle, pas `.len()` en bytes.
-- Ajouter `terminal_size = "0.3"` pour lire la largeur du terminal ; largeur de boîte = `min(terminal_width - 2, 76)`, minimum `40`.
-- Si le contenu dépasse la largeur dispo, tronquer avec `…` plutôt que de casser l'alignement.
+Largeur de boîte = `min(terminal_width - 2, 76)`, minimum `40`. Troncature avec `…` si contenu trop long.
 
 ```
-╭─ Dry run — 3 groups detected ──────────────────────────────╮
-│  ● feat(auth)   3 files   +142 -8    Add JWT refresh flow  │
-│  ● fix(api)     1 file    +6   -2    Fix null check in...  │
-│  ○ chore(deps)  2 files   +12  -0    Bump reqwest to 0.12  │
+╭─ doctor analyze ────────────────────────────────────────────╮
+│  History Health: C (62/100)                                  │
+│    Message quality:     71%  ← 3 commits with vague subjects │
+│    Atomicity:           45%  ← 1 commit touched 12 files     │
+│    Size discipline:     58%  ← 2 commits > 500 lines         │
+│    Convention:          80%  ← 80% follow Conventional       │
 ╰──────────────────────────────────────────────────────────────╯
 ```
 
@@ -79,183 +77,113 @@ Chaque état a un format fixe : **symbole + couleur + message court + détail op
 
 **Succès**
 ```
-✓ Committed 3 groups (feat(auth), fix(api), chore(deps))
+✓ Plan applied — 3 operations (backup: doctor-backup-20260728)
 ```
 
 **Erreur** — toujours 3 lignes : quoi / pourquoi / comment corriger.
 ```
 ✗ Failed to reach Anthropic API
   → Invalid API key (401 Unauthorized)
-  → Run `aicommit config set anthropic.api_key <key>` to fix
+  → Run `doctor config --provider anthropic --api-key <key>` to fix
 ```
 
 **Avertissement**
 ```
-⚠ Diff is large (2,400 lines) — truncating to fit model context
+⚠ WIP detected in abc1234: "wip"
 ```
 
-**Chargement** (via `indicatif`, pas de print manuel) — spinner cyan + verbe au gérondif :
+**Chargement**
 ```
-⠋ Analyzing changes...
-⠙ Generating commit messages...
+⋯ Analyzing 20 commits...
+⋯ Generating plan...
 ```
 
 ---
 
-## 6. Flux interactifs (corrections incluses)
+## 6. Flux interactifs
 
-### 6.1 Sélection multi-commit — fix du bug Ctrl+C
+### 6.1 Sélection multi-commit — Ctrl+C
 
-Règle : **annuler (Esc/Ctrl+C) doit annuler**, pas "tout sélectionner". Séparer explicitement les 3 issues possibles :
-
-**Prérequis** : `Group` (`splitter.rs`) n'a aujourd'hui que `name` + `paths` — pas de stats. Les ajouter directement à la struct plutôt que les recalculer côté sélecteur, puisque `group_by_directory` a déjà accès au texte du diff par fichier :
-
-```rust
-pub struct Group {
-    pub name: String,
-    pub paths: Vec<String>,
-    pub file_count: usize,
-    pub insertions: usize,
-    pub deletions: usize,
-}
-```
-
-`insertions`/`deletions` se calculent en comptant, pour chaque section de fichier déjà isolée par `diff --git `, les lignes commençant par `+`/`-` en excluant les en-têtes `+++`/`---`. Pas besoin de repasser par `git2` — c'est déjà dans la string `diff` que `group_by_directory` reçoit.
+Règle : **annuler (Esc/Ctrl+C) doit annuler**, pas "tout sélectionner".
 
 ```rust
 pub fn select_commits(groups: &[Group], msgs: &[String]) -> SelectResult {
-    let items: Vec<String> = groups.iter().zip(msgs.iter())
-        .map(|(g, m)| format!("{}  {m}  ({} files, +{} -{})",
-            g.name, g.file_count, g.insertions, g.deletions))
-        .collect();
-
     match dialoguer::MultiSelect::new()
         .with_prompt("Select commits to apply  [space: toggle, a: all, enter: confirm, esc: cancel]")
         .items(&items)
-        .interact_opt()          // <- Option, pas de unwrap silencieux
+        .interact_opt()
     {
-        Ok(Some(sel)) if sel.is_empty() => SelectResult::None,   // explicitement rien coché
+        Ok(Some(sel)) if sel.is_empty() => SelectResult::None,
         Ok(Some(sel)) => SelectResult::Some(sel),
-        Ok(None) | Err(_) => SelectResult::Cancelled,             // esc/ctrl+c
+        Ok(None) | Err(_) => SelectResult::Cancelled,
     }
 }
 ```
-- `Cancelled` → sortie propre, code retour non-zéro, rien n'est commité, message `✗ Cancelled — no commits created`.
-- `None` (0 coché + confirmé volontairement) → même comportement que `Cancelled`, pas "tout".
-- Affichage enrichi : nombre de fichiers + stats +/- pour aider la décision, comme dans la boîte dry-run ci-dessus.
 
-### 6.2 Éditeur de message
-Garder `dialoguer::Input` mais ajouter un hint sous le prompt :
-```
-Commit message (edit or press enter to accept):
-> feat(auth): add JWT refresh token flow
-```
-
-### 6.3 Confirmation avant action destructive
-Toute commande qui touche l'historique (`undo`, `--force`) passe par `dialoguer::Confirm` avec `default(false)` explicite — jamais `default(true)` sur une action destructive.
+### 6.2 Confirmation avant action destructive
+Toute commande qui touche l'historique (`apply`, `undo`, `--force`) passe par `dialoguer::Confirm` avec `default(false)`.
 
 ---
 
-## 7. Expérience d'installation & premier lancement
+## 7. Expérience premier lancement
 
-Objectif : de `cargo install aicommit` / `brew install` au premier commit réussi, sans lire de doc.
-
-**Étape 1 — Install (package manager)**
-Sortie standard du gestionnaire de paquets, rien à designer côté aicommit ici.
-
-**Étape 2 — Premier `aicommit` lancé dans un repo git**
+**Premier `doctor analyze` dans un repo git :**
 
 ```
 ╭──────────────────────────────────────────╮
-│  █████╗ ██╗ ██████╗ ██████╗ ███╗   ███╗ │
-│  ...                                      │
-│  v0.3.1 — AI-powered Git commits          │
+│  Git History Doctor — v0.1.0              │
 ╰──────────────────────────────────────────╯
 
-ℹ No provider configured yet. Let's set one up.
+ℹ Analysing your history for the first time...
 
-? Choose your provider  [use arrows, enter to select]
-❯ ● Ollama (local, free, private) — recommended
-  ○ Anthropic (Claude)
-  ○ OpenAI (GPT)
-  ○ Gemini
-  ○ Groq / Mistral / Cohere / OpenRouter
-
-  → Local providers need no API key and never send code off your machine.
+✓ Health score: B (78/100) — 10 commits analyzed
+  → Run `doctor plan` to generate a cleanup plan
 ```
-
-Si Ollama choisi et non détecté :
-```
-⚠ Ollama not reachable at http://localhost:11434
-  → Install: https://ollama.com/download
-  → Or press [b] to go back and pick a cloud provider
-```
-
-Si provider cloud choisi :
-```
-? Paste your Anthropic API key: ****************************
-⋯ Testing connection...
-✓ Connected — using claude-sonnet-4-6
-✓ Saved to ~/.config/aicommit/config.toml (permissions 600)
-```
-
-**Étape 3 — Premier commit réel** : enchaîne directement sur le flux normal (dry-run → sélection → commit), pas d'écran supplémentaire. Le setup ne doit jamais être un mur séparé de l'usage réel.
-
-**Règle générale install** : le wizard ne se relance jamais automatiquement une fois configuré. `aicommit wizard` permet de le relancer à la demande.
-
-**Détails d'implémentation** :
-- État "déjà configuré" stocké via un fichier sentinel `~/.config/aicommit/.config-done`, même mécanisme que `.banner-shown` dans `banner.rs` — pas de nouveau système à inventer.
-- Le wizard **ne se déclenche jamais** si la variable d'env `CI` est présente (ou `--yes` passé) : dans ce cas, absence de config = erreur claire immédiate (`✗ No provider configured — run 'aicommit wizard' or set ANTHROPIC_API_KEY`), jamais un prompt interactif qui bloquerait un pipeline.
-- `aicommit wizard` (commande explicite, section 8) écrase le sentinel et relance l'écran complet, y compris si déjà configuré.
 
 ---
 
 ## 8. Structure de l'aide (`--help`)
 
-Format court, groupé par intention (pas alphabétique) :
-
 ```
-aicommit — AI-powered, atomic Git commits
+doctor — Git History Doctor
 
 USAGE:
-  aicommit [OPTIONS]
-  aicommit <COMMAND>
+  doctor [COMMAND]
 
-COMMANDS:
-  aicommit config     Manage provider and behavior settings
-  aicommit undo       Revert the last aicommit-generated commit
-  aicommit wizard     Re-run the interactive setup
+WORKFLOW:
+  analyze    Diagnose commit history quality
+  plan       Generate a cleanup plan
+  apply      Apply a cleanup plan safely
+  check      Pre-push hook or CI gate
 
-OPTIONS:
-  --dry-run           Preview commits without applying them
-  --single            Force a single commit instead of splitting into groups
-  --model <MODEL>     Override the provider's default model for this run
-  --yes               Skip interactive selection, apply all groups
-  --no-color          Disable colored output
-  --quiet             Only print errors
-  -h, --help          Print help
-  -V, --version       Print version
+PROVIDER:
+  commit     Generate atomic commits from staged changes
+  config     Manage provider and behavior settings
 
-Run `aicommit` inside a git repo with staged/unstaged changes to get started.
+DISPLAY:
+  --no-color    Disable colored output
+  -h, --help    Print help
+  -V, --version Print version
+
+Run `doctor analyze` in a git repo to get started.
 ```
 
 ---
 
 ## 9. Checklist d'implémentation
 
-| Fix | Fichier | Priorité | Effort |
-|---|---|---|---|
-| Ctrl+C ne doit plus committer "tout" | `interactive.rs` | 🔴 Critique | S (~1h) |
-| Respect `NO_COLOR` + flag `--no-color` | `main.rs` | 🔴 Critique | S (~1h) |
-| Padding boîtes en largeur d'affichage + largeur adaptative (`unicode-width`, `terminal_size`) | `display.rs` | 🔴 Critique | M (2-3h) |
-| Version dynamique (`env!("CARGO_PKG_VERSION")`) | `banner.rs` | 🟡 Rapide | S (~30min) |
-| Champs stats sur `Group` + affichage dans le sélecteur | `splitter.rs`, `interactive.rs` | 🟢 Moyen | M (touche parsing diff + UI) |
-| Wizard de setup au premier lancement | nouveau `src/wizard.rs` | 🟡 Nouvelle feature | L (4-5h) |
-| Format d'erreur standardisé (quoi/pourquoi/fix) | tous les `Err` remontés à `main.rs` | 🟢 Moyen | M (2-3h, transverse) |
-| `--single` / `--model`, `--help` restructuré par intention | `main.rs` (clap) | 🔵 Nice-to-have | S (~1h) |
+| Fix | Fichier | Statut |
+|---|---|---|
+| Ctrl+C ne doit plus committer "tout" | `interactive.rs` | ✅ Fait |
+| Respect `NO_COLOR` + flag `--no-color` | `main.rs` | ✅ Fait |
+| Padding boîtes + largeur adaptative | `display.rs` | ✅ Fait |
+| Version dynamique (`CARGO_PKG_VERSION`) | `banner.rs` | ✅ Fait |
+| Champs stats sur `Group` | `splitter.rs` | ✅ Fait |
+| Format d'erreur standardisé (quoi/pourquoi/fix) | tous les modules | ✅ Fait |
+| `--help` groupé par intention | `main.rs` (clap) | ✅ Fait |
 
 ---
 
 ## 10. Ce qui ne change pas
 
-Le style boîtes-Unicode + cyan est déjà une identité visuelle correcte et reconnaissable — on la garde et on la corrige, on ne la réinvente pas.
+Le style boîtes-Unicode + cyan est une identité visuelle correcte et reconnaissable — on la garde et on la corrige, on ne la réinvente pas.

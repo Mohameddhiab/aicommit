@@ -6,14 +6,14 @@ Diagnostiquer, soigner et maintenir la santé de l'historique Git.
 
 ## 1. Pourquoi un nouveau produit
 
-`aicommit` était un générateur de messages de commit — un marché saturé
+L'ancien projet (`aicommit`) était un générateur de messages de commit — un marché saturé
 (suenot/aicommit, aicommits, etc.). `git-doctor` change d'horizon :
 
 | Produit | Problème |
 |---|---|
 | `aicommit` (suenot, 48K+ dl) | Génère des messages de commit |
 | `aicommits` (Nutlope, 8.9K stars) | Génère des messages de commit |
-| **`aicommit` (toi)** | ~~Générateur de messages~~ → **Historien clinicien** |
+| **`aicommit` → `git-doctor`** | ~~Générateur de messages~~ → **Historien clinicien** |
 
 **Nouveau positionnement :**
 
@@ -35,7 +35,7 @@ git-doctor
 ├── doctor apply       ← Applique le plan (sécurisé)
 ├── doctor check       ← Pre-push hook / CI gate
 ├── doctor report      ← Rapport HTML/JSON/Markdown
-├── doctor commit      ← Génère un commit atomique de qualité
+├── doctor commit      ← Génère un commit atomique de qualité (hérité)
 └── doctor init        ← Installe les hooks + config
 ```
 
@@ -103,7 +103,7 @@ Use --force to bypass safety checks.
 
 ### 2.4 `doctor check` — Prévention
 
-Hook pre-commit ou pre-push qui valide la qualité.
+Hook pre-push qui valide la qualité des commits sortants.
 
 ```
 $ doctor check --pre-push
@@ -128,105 +128,84 @@ Checking 3 outgoing commits...
 
 Score global : moyenne pondérée (`message × 0.3 + atomicity × 0.3 + size × 0.2 + convention × 0.2`).
 
-### 2.6 `doctor commit` — L'héritage d'aicommit
+### 2.6 `doctor commit` — L'héritage
 
 La fonctionnalité originale de génération de messages est conservée
 comme sous-commande, avec le splitting atomique — mais recentrée
-comme un outil de *prévention* plutôt que de *génération*.
+comme un outil de *prévention* (créer des commits propres) plutôt que de curation.
 
 ---
 
-## 3. Réutilisation du code aicommit
+## 3. Réutilisation du code existant
 
-| Module aicommit | Réutilisation | Modification |
+| Module source | Réutilisation | Modification |
 |---|---|---|
-| `splitter.rs` | Mixed-concern detection pour `analyze` | Ajouter scoring, export des stats par fichier |
-| `parser.rs` | Analyser les messages existants dans `analyze` | Ajouter scoring de qualité |
-| `git.rs` | Lire l'historique, créer branches backup, rebase | Ajouter `walk_history()`, `create_backup()`, `rebase_plan()` |
-| `display.rs` | Boîtes de rapport, couleurs sémantiques | Ajouter format HTML/JSON |
-| `config.rs` | Configuration des seuils, hooks | Ajouter section `[quality]` |
-| `interactive.rs` | Confirmation avant apply, sélection | Ajouter plan review |
-| `prompt.rs` + `llm/` | Optionnel : rewrite AI des messages faibles | Garder tel quel |
-| `banner.rs` | Banner first-run pour `doctor init` | Adapter le texte |
+| `splitter.rs` | Mixed-concern detection pour `analyze` | Ajout scoring, export stats |
+| `parser.rs` | Analyser les messages existants dans `analyze` | Ajout scoring de qualité |
+| `git.rs` | Lire l'historique, créer branches backup | Ajout `walk_history()`, `create_backup()`, `remote_exists()` |
+| `display.rs` | Boîtes de rapport, couleurs sémantiques | Largeur adaptative + unicode-width |
+| `config.rs` | Configuration des seuils | Ajout section `[doctor]` |
+| `interactive.rs` | Confirmation avant apply | Retour Ctrl+C propre (SelectResult) |
+| `prompt.rs` + `llm/` | Génération de messages | Conservé tel quel |
+| `banner.rs` | Banner first-run | Version dynamique + chemin `doctor` |
 
-### Nouveaux modules à créer
+### Nouveaux modules créés
 
-| Module | Taille | Description |
-|---|---|---|
-| `src/analyze.rs` | M | Scoring, parsing d'historique, détection de patterns |
-| `src/plan.rs` | M | Génération de plan de correction |
-| `src/apply.rs` | L | Application safe du plan, backup, rollback |
-| `src/hook.rs` | S | Installation de hooks pre-push |
-| `src/report.rs` | M | Génération de rapports (HTML, JSON, Markdown) |
+| Module | Description |
+|---|---|
+| `src/analyze.rs` | Scoring, parsing d'historique, détection de patterns |
+| `src/plan.rs` | Génération de plan de correction |
+| `src/apply.rs` | Application safe du plan, backup, rollback |
+| `src/hook.rs` | Installation de hooks pre-push |
+| `src/report.rs` | Génération de rapports (HTML, JSON, Markdown) |
 
 ---
 
-## 4. Plan d'implémentation
+## 4. Plan d'implémentation (réalisé)
 
-### Phase 1 — Renommage + `analyze` (1-2 jours)
-
+### Phase 1 — Renommage + `analyze` ✅
 1. Renommer le projet `aicommit` → `git-doctor` dans `Cargo.toml`
-2. Renommer les dossiers et imports internes
-3. Supprimer `aicommit config` au profit de `doctor config`
-4. Implémenter `doctor analyze` :
-   - `git::walk_history()` pour lire N commits
-   - `analyze::score_message()` → scoring qualité message
-   - `analyze::detect_mixed_concern()` → reprise de `splitter.rs`
-   - `analyze::detect_oversized()` → taille lignes/fichiers
-   - `analyze::detect_wip_patterns()` → regex matching
-5. Afficher le rapport dans le terminal (boîtes)
+2. Renommer les imports internes (`aicommit::` → `git_doctor::`)
+3. Migration `aicommit config` → `doctor config`
+4. Implémenter `doctor analyze` (walk_history, scoring, WIP/vague detection)
+5. Rapport texte + JSON + HTML
 
-### Phase 2 — `plan` (1-2 jours)
+### Phase 2 — `plan` ✅
+1. Génération de plan avec opérations Squash, Reword, Split
+2. Format JSON + texte
 
-1. Implémenter `doctor plan` :
-   - Grouper les correctifs par type
-   - Suggérer squash groups (reprise de l'algo `splitter.rs`)
-   - Suggérer reword messages
-   - Suggérer split commits
-2. Format de sortie JSON + terminal
-
-### Phase 3 — `apply` (2-3 jours)
-
+### Phase 3 — `apply` ✅
 1. `git::create_backup_branch()`
-2. `git::rebase_plan()` avec script rebase
-3. Safety : détection pushed commits, dry-run, rollback
-4. `doctor apply <plan.json>`
+2. `git::remote_exists()` — détection pushed commits
+3. Dry-run, force flag, rollback backup
 
-### Phase 4 — `check` + `report` (1 jour)
+### Phase 4 — `check` + hooks ✅
+1. `doctor check --pre-push`
+2. `doctor init` / `doctor uninstall`
 
-1. `doctor check --pre-push` → hook git
-2. `doctor init` → installe le hook
-3. `doctor report --format html`
-
-### Phase 5 — `commit` préservé (1 jour)
-
-1. Migrer `aicommit` → `doctor commit`
-2. Tester la compatibilité
+### Phase 5 — `commit` préservé ✅
+1. Migration `aicommit` → `doctor commit`
+2. Compatibilité totale avec l'ancien flux
 
 ---
 
 ## 5. Risques et migrations
 
-### Risque : perte du nom aicommit sur GitHub
-Ton repo s'appelle déjà `Mohameddhiab/aicommit`. Deux options :
-- Renommer le repo (`git-doctor`)
-- Garder le repo et changer le binaire seulement
+### Risque : nom du repo GitHub
+Le repo s'appelle encore `Mohameddhiab/aicommit`. Décision : renommer en `git-doctor`.
 
 ### Risque : confusion avec git-doctor existant
-Le nom `git-doctor` est utilisé par des outils de réparation de dépôt
-corrompu, pas de qualité d'historique. La différence est claire :
-- `git-doctor` existant → répare un `.git` corrompu
-- `doctor` → soigne la qualité de l'historique
+Le nom `git-doctor` est utilisé par des outils de réparation de dépôt corrompu.
+La différence est claire : réparation `.git` vs qualité d'historique.
 
 ### Migration utilisateurs
-Les utilisateurs existants d'`aicommit` (0 pour l'instant) ne seront
-pas impactés — le projet n'a pas été publié sur crates.io.
+Aucun utilisateur existant — le projet n'a pas été publié sur crates.io sous l'ancien nom.
 
 ---
 
-## 6. Questions ouvertes
+## 6. Prochaines étapes
 
-- Faut-il garder la compatibilité avec `.aicommit.toml` ou migrer vers
-  `doctor.toml` / `.git-doctor.toml` ?
-- L'AI rewrite des messages faibles doit-il être optionnel ou intégré ?
-- Support des remotes (analyse PRs, stats équipe) en v2 ?
+- Renommer le repo GitHub `Mohameddhiab/aicommit` → `Mohameddhiab/git-doctor`
+- Mettre à jour les URLs (Cargo.toml, README, CONTRIBUTING)
+- Publier v0.1.0 sur crates.io
+- Ajouter la détection mixed-concern réelle via `splitter::group_key`
