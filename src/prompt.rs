@@ -96,7 +96,7 @@ fn truncate(s: &str, max: usize) -> String {
         return s.to_string();
     }
     let mut t = s[..max].to_string();
-    t.push_str("\n... [truncated by aicommit] ...\n");
+    t.push_str("\n... [truncated by doctor] ...\n");
     t
 }
 

@@ -78,7 +78,7 @@ impl AnthropicProvider {
                 anyhow::bail!(
                     "authentication failed (401 Unauthorized)\n\
                      → check your ANTHROPIC_API_KEY is correct\n\
-                     → set it with: aicommit config --provider anthropic --api-key <key>"
+                     → set it with: doctor config --provider anthropic --api-key <key>"
                 );
             }
             anyhow::bail!("anthropic returned {status}: {txt}");

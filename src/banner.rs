@@ -15,7 +15,7 @@ const BANNER_HEAD: &str = r"
 fn sentinel_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("aicommit")
+        .join("doctor")
         .join(".banner-shown")
 }
 

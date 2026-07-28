@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-use aicommit::git::GitRepo;
+use git_doctor::git::GitRepo;
 
 struct TestRepo {
     _dir: TempDir,
@@ -168,7 +168,7 @@ fn test_diff_for_group_filters_paths() {
     let t = TestRepo::new();
     t.write_and_stage("src/lib.rs", "pub fn lib() {}");
     t.write_and_stage("src/bin.rs", "fn main() {}");
-    let group = aicommit::splitter::Group {
+    let group = git_doctor::splitter::Group {
         name: "src".into(),
         paths: vec!["src/lib.rs".into(), "src/bin.rs".into()],
         file_count: 2,

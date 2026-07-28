@@ -18,7 +18,7 @@ body:
       label: Steps to Reproduce
       description: How can we reproduce the issue?
       placeholder: |
-        1. Run 'aicommit --dry-run'
+         1. Run 'doctor commit --dry-run'
         2. See error...
     validations:
       required: true
@@ -36,8 +36,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: aicommit Version
-      description: Run `aicommit --version` and paste the result.
+      label: doctor Version
+      description: Run `doctor --version` and paste the result.
     validations:
       required: true
   - type: dropdown

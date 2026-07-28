@@ -2,8 +2,8 @@ use std::fs;
 use std::sync::{Mutex, OnceLock};
 use tempfile::TempDir;
 
-use aicommit::config::{load, Config};
-use aicommit::git::GitRepo;
+use git_doctor::config::{load, Config};
+use git_doctor::git::GitRepo;
 
 fn mock_config() -> Config {
     load(Some("mock".into()), None, None, None, None, 120).expect("mock config should load")
@@ -32,8 +32,8 @@ async fn test_full_workflow_stage_then_commit() {
     assert!(diff.contains("hello.rs"), "staged diff should contain file");
 
     let cfg = mock_config();
-    let provider = aicommit::llm::build_provider(&cfg).expect("build mock provider");
-    let msg = aicommit::llm::generate_commit_message(&provider, &diff, &cfg)
+    let provider = git_doctor::llm::build_provider(&cfg).expect("build mock provider");
+    let msg = git_doctor::llm::generate_commit_message(&provider, &diff, &cfg)
         .await
         .expect("generate commit message");
 
@@ -75,12 +75,12 @@ async fn test_workflow_via_free_functions() {
     index.add_path(std::path::Path::new("main.rs")).unwrap();
     index.write().unwrap();
 
-    let diff = aicommit::git::staged_diff().unwrap();
+    let diff = git_doctor::git::staged_diff().unwrap();
     assert!(diff.contains("main.rs"), "should detect staged file");
     drop(_lock);
 
-    let provider = aicommit::llm::build_provider(&mock_config()).unwrap();
-    let msg = aicommit::llm::generate_commit_message(&provider, &diff, &mock_config())
+    let provider = git_doctor::llm::build_provider(&mock_config()).unwrap();
+    let msg = git_doctor::llm::generate_commit_message(&provider, &diff, &mock_config())
         .await
         .unwrap();
     assert!(
@@ -88,7 +88,7 @@ async fn test_workflow_via_free_functions() {
         "mock should generate feat(test), got: {msg}"
     );
 
-    aicommit::git::commit(&msg, None).unwrap();
+    git_doctor::git::commit(&msg, None).unwrap();
 
     let repo_for_head = git2::Repository::open(dir.path()).unwrap();
     let head = repo_for_head.head().unwrap();

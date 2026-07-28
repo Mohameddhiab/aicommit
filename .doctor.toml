@@ -1,5 +1,5 @@
-# Example configuration for aicommit.
-# Place at the root of your project, or copy to ~/.aicommit.toml (global).
+# Example configuration for git-doctor.
+# Place at the root of your project, or copy to ~/.doctor.toml (global).
 
 [provider]
 default = "ollama"  # ollama | openai | anthropic | groq | deepseek | mistral | gemini | openrouter

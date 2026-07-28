@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in aicommit! Here's how to get started.
+Thanks for your interest in git-doctor! Here's how to get started.
 
 ## Prerequisites
 
@@ -35,14 +35,19 @@ cargo fmt --check
 ```
 src/
 ├── main.rs          # CLI entry point (clap)
+├── analyze.rs       # History scoring and quality analysis
+├── apply.rs         # Safe plan application with backup
 ├── config.rs        # Configuration loading and merging
-├── git.rs           # git2 wrapper: diff, add, commit, status
+├── display.rs       # Boxed terminal output
+├── git.rs           # git2 wrapper: diff, add, commit, walk history
+├── hook.rs          # Pre-push hook management
 ├── interactive.rs   # Interactive commit selection UI
 ├── llm/             # AI providers (ollama, openai, anthropic, gemini, mock)
 ├── parser.rs        # LLM response parsing (JSON + text fallback)
+├── plan.rs          # Cleanup plan generation
 ├── prompt.rs        # System and user prompt construction
+├── report.rs        # Report output (text, JSON, HTML)
 ├── splitter.rs      # Atomic commit grouping logic
-└── display.rs       # Boxed terminal output
 tests/
 ├── e2e_workflow.rs  # End-to-end workflow tests
 └── git_integration.rs # Git integration tests

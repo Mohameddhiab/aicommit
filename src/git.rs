@@ -2,6 +2,8 @@ use anyhow::{anyhow, Context, Result};
 use git2::{DiffFormat, DiffOptions, Repository, Signature};
 use std::path::{Path, PathBuf};
 
+type WalkEntry = (String, String, String, String, usize, usize, usize);
+
 const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /// A wrapper around a git2::Repository that can be constructed from any path.
@@ -78,7 +80,7 @@ impl GitRepo {
         let tree_oid = index.write_tree()?;
         let tree = self.repo.find_tree(tree_oid)?;
         let sig = self.repo.signature().unwrap_or_else(|_| {
-            Signature::now("aicommit", "aicommit@users.noreply.github.com")
+            Signature::now("doctor", "doctor@users.noreply.github.com")
                 .expect("create fallback signature")
         });
         let parents: Vec<git2::Commit<'_>> = match self.repo.head().ok() {
@@ -140,6 +142,47 @@ impl GitRepo {
             .reset(&obj, git2::ResetType::Soft, None)
             .context("undo last commit")?;
         Ok(())
+    }
+
+    /// Walk the last N commits and return (oid, subject, author, body, files_changed, insertions, deletions).
+    pub fn walk_history(&self, count: usize) -> Result<Vec<WalkEntry>> {
+        let mut revwalk = self.repo.revwalk()?;
+        revwalk.push_head()?;
+        revwalk.set_sorting(git2::Sort::TIME)?;
+
+        let mut out = Vec::new();
+        for (i, oid_result) in revwalk.enumerate() {
+            if i >= count {
+                break;
+            }
+            let oid = oid_result?;
+            let commit = self.repo.find_commit(oid)?;
+            let subject = commit.summary().unwrap_or("").to_string();
+            let author = commit.author().name().unwrap_or("unknown").to_string();
+            let body = commit.body().unwrap_or("").to_string();
+
+            let tree = commit.tree()?;
+            let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+            let diff = self.repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
+
+            let (files, insertions, deletions) = diff_stats(&diff);
+            out.push((oid.to_string(), subject, author, body, files, insertions, deletions));
+        }
+        Ok(out)
+    }
+
+    pub fn create_backup(&self, branch_name: &str) -> Result<()> {
+        let head = self.repo.head()?.peel_to_commit()?;
+        self.repo.branch(branch_name, &head, false)?;
+        Ok(())
+    }
+
+    pub fn remote_exists(&self) -> Result<bool> {
+        Ok(self.repo.remotes()?.iter().any(|r| r.is_some()))
+    }
+
+    pub fn git_dir(&self) -> PathBuf {
+        self.repo.path().to_path_buf()
     }
 
     /// Check if the repository is in a merge, rebase, bisect, or cherry-pick state.
@@ -207,6 +250,14 @@ pub fn ensure_in_repo() -> Result<()> {
 }
 
 // --- Private helpers ---
+
+fn diff_stats(diff: &git2::Diff) -> (usize, usize, usize) {
+    let stats = diff.stats().ok();
+    match stats {
+        Some(s) => (s.files_changed(), s.insertions(), s.deletions()),
+        None => (0, 0, 0),
+    }
+}
 
 fn diff_to_string(diff: &git2::Diff) -> Result<String> {
     let mut buf = Vec::new();

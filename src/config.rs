@@ -3,8 +3,8 @@
 //! Resolution order (highest priority first):
 //!   1. CLI flags (--provider, --model, --lang, --api-key)
 //!   2. Environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, …)
-//!   3. Project config: ./.aicommit.toml
-//!   4. Global config: ~/.aicommit.toml
+//!   3. Project config: ./.doctor.toml
+//!   4. Global config: ~/.doctor.toml
 //!   5. Hardcoded defaults
 
 use anyhow::{anyhow, Context, Result};
@@ -241,7 +241,7 @@ pub fn load(
 fn load_file() -> Result<ConfigFile> {
     let local = std::env::current_dir()
         .unwrap_or_default()
-        .join(".aicommit.toml");
+        .join(".doctor.toml");
     let global = global_config_path();
     let merged = merge_files(local, global)?;
     Ok(merged)
@@ -249,9 +249,9 @@ fn load_file() -> Result<ConfigFile> {
 
 fn global_config_path() -> PathBuf {
     dirs::config_dir()
-        .map(|d| d.join("aicommit").join("config.toml"))
-        .or_else(|| dirs::home_dir().map(|h| h.join(".aicommit.toml")))
-        .unwrap_or_else(|| PathBuf::from(".aicommit.toml"))
+        .map(|d| d.join("doctor").join("config.toml"))
+        .or_else(|| dirs::home_dir().map(|h| h.join(".doctor.toml")))
+        .unwrap_or_else(|| PathBuf::from(".doctor.toml"))
 }
 
 fn read_file(path: &PathBuf) -> Result<ConfigFile> {
@@ -365,7 +365,7 @@ fn resolve_provider(
     }
     Err(anyhow!(
         "no AI provider configured\n\
-         → run: aicommit config --provider <name> --api-key <key>\n\
+          → run: doctor config --provider <name> --api-key <key>\n\
          → or install Ollama from https://ollama.com"
     ))
 }
@@ -382,7 +382,7 @@ fn ollama_reachable(url: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Handle `aicommit config` subcommand.
+/// Handle `doctor config` subcommand.
 pub async fn handle_config_command(
     api_key: Option<String>,
     provider: Option<String>,

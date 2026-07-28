@@ -1,18 +1,18 @@
 [package]
-name = "aicommit"
-version = "0.3.0"
+name = "git-doctor"
+version = "0.1.0"
 edition = "2021"
-description = "Generates perfect, atomic Git commits using AI — fast, local, reliable"
+description = "Git History Doctor — diagnose, fix, and maintain clean git history"
 license = "MIT"
 repository = "https://github.com/Mohameddhiab/aicommit"
 homepage = "https://github.com/Mohameddhiab/aicommit"
 documentation = "https://github.com/Mohameddhiab/aicommit#readme"
 readme = "README.md"
-keywords = ["git", "ai", "cli", "commit", "developer-tools"]
+keywords = ["git", "history", "cli", "quality", "developer-tools"]
 categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
-name = "aicommit"
+name = "doctor"
 path = "src/main.rs"
 
 [dependencies]
@@ -32,6 +32,7 @@ thiserror = "1"
 dirs = "5"
 async-trait = "0.1"
 glob = "0.3"
+open = "5"
 
 [dev-dependencies]
 tempfile = "3"

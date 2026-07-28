@@ -80,7 +80,7 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 .clone()
                 .ok_or_else(|| {
                     anyhow!(
-                        "missing API key for {}\n→ set it with: aicommit config --provider {} --api-key <key>",
+                        "missing API key for {}\n→ set it with: doctor config --provider {} --api-key <key>",
                         cfg.provider.as_str(),
                         cfg.provider.as_str()
                     )
@@ -106,7 +106,7 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 .clone()
                 .ok_or_else(|| {
                     anyhow!(
-                        "missing ANTHROPIC_API_KEY\n→ set it with: aicommit config --provider anthropic --api-key <key>"
+                        "missing ANTHROPIC_API_KEY\n→ set it with: doctor config --provider anthropic --api-key <key>"
                     )
                 })?;
             let model = cfg
@@ -130,7 +130,7 @@ pub fn build_provider(cfg: &Config) -> Result<AnyProvider> {
                 .clone()
                 .ok_or_else(|| {
                     anyhow!(
-                        "missing GOOGLE_API_KEY\n→ set it with: aicommit config --provider gemini --api-key <key>"
+                        "missing GOOGLE_API_KEY\n→ set it with: doctor config --provider gemini --api-key <key>"
                     )
                 })?;
             let model = cfg

@@ -42,12 +42,12 @@ jobs:
       - name: Prepare binary
         shell: bash
         run: |
-          BIN="aicommit"
+          BIN="doctor"
           SRC="target/${{ matrix.target }}/release/${BIN}"
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             SRC="${SRC}.exe"
           fi
-          ARCHIVE="aicommit-${{ matrix.target }}${{ matrix.os == 'windows-latest' && '.zip' || '.tar.gz' }}"
+          ARCHIVE="git-doctor-${{ matrix.target }}${{ matrix.os == 'windows-latest' && '.zip' || '.tar.gz' }}"
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             cp "$SRC" "${BIN}.exe"
             7z a "$ARCHIVE" "${BIN}.exe"

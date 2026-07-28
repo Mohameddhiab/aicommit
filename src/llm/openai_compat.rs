@@ -87,7 +87,7 @@ impl OpenAiCompatProvider {
                 anyhow::bail!(
                     "authentication failed (401 Unauthorized)\n\
                      → check your API key is correct\n\
-                     → set it with: aicommit config --provider <provider> --api-key <key>"
+                     → set it with: doctor config --provider <provider> --api-key <key>"
                 );
             }
             anyhow::bail!("provider returned {status}: {txt}");

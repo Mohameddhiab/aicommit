@@ -90,7 +90,7 @@ impl GeminiProvider {
                 anyhow::bail!(
                     "authentication failed (HTTP {status})\n\
                      → check your GOOGLE_API_KEY is correct\n\
-                     → set it with: aicommit config --provider gemini --api-key <key>"
+                     → set it with: doctor config --provider gemini --api-key <key>"
                 );
             }
             anyhow::bail!("gemini returned {status}: {txt}");
