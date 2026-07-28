@@ -19,7 +19,12 @@ pub fn select_commits(groups: &[Group], msgs: &[String]) -> SelectResult {
     let items: Vec<String> = groups
         .iter()
         .zip(msgs.iter())
-        .map(|(g, m)| format!("[{}]  {m}", g.name))
+        .map(|(g, m)| {
+            format!(
+                "[{}]  {m}  ({} files, +{} -{})",
+                g.name, g.file_count, g.insertions, g.deletions
+            )
+        })
         .collect();
 
     let selection = dialoguer::MultiSelect::new()

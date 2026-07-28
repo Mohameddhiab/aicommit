@@ -10,6 +10,12 @@ pub struct Group {
     pub name: String,
     /// Repo-relative paths included in this group.
     pub paths: Vec<String>,
+    /// Number of files in this group.
+    pub file_count: usize,
+    /// Total added lines across all files in this group.
+    pub insertions: usize,
+    /// Total deleted lines across all files in this group.
+    pub deletions: usize,
 }
 
 /// Decide whether a diff is small enough to be a single commit.
@@ -54,13 +60,20 @@ pub fn group_by_directory(diff: &str, max_groups: usize, exclude: &[String]) -> 
             .push(path.to_string_lossy().into_owned());
     }
 
+    // Compute stats for all files in the diff.
+    let stats = compute_stats(diff);
+
     // If everything falls into one bucket, just one commit.
     if buckets.len() <= 1 {
         let mut paths: Vec<String> = buckets.into_values().flatten().collect();
         paths.sort();
+        let (insertions, deletions) = sum_stats(&paths, &stats);
         return Ok(vec![Group {
             name: "root".to_string(),
+            file_count: paths.len(),
             paths,
+            insertions,
+            deletions,
         }]);
     }
 
@@ -68,7 +81,14 @@ pub fn group_by_directory(diff: &str, max_groups: usize, exclude: &[String]) -> 
         .into_iter()
         .map(|(name, mut paths)| {
             paths.sort();
-            Group { name, paths }
+            let (insertions, deletions) = sum_stats(&paths, &stats);
+            Group {
+                name,
+                file_count: paths.len(),
+                paths,
+                insertions,
+                deletions,
+            }
         })
         .collect();
 
@@ -81,9 +101,14 @@ pub fn group_by_directory(diff: &str, max_groups: usize, exclude: &[String]) -> 
             .into_iter()
             .flat_map(|g| g.paths)
             .collect();
+        let m_insertions: usize = misc_paths.iter().map(|p| stats.get(p.as_str()).map(|s| s.0).unwrap_or(0)).sum();
+        let m_deletions: usize = misc_paths.iter().map(|p| stats.get(p.as_str()).map(|s| s.1).unwrap_or(0)).sum();
         groups.push(Group {
             name: "misc".to_string(),
+            file_count: misc_paths.len(),
             paths: misc_paths,
+            insertions: m_insertions,
+            deletions: m_deletions,
         });
     }
 
@@ -126,6 +151,53 @@ fn group_key(path: &Path) -> String {
     } else {
         comps[0].as_os_str().to_string_lossy().into_owned()
     }
+}
+
+/// Parse a unified diff string and return per-file (insertions, deletions).
+/// Lines starting with `+` (except `+++`) count as insertions.
+/// Lines starting with `-` (except `---`) count as deletions.
+fn compute_stats(diff: &str) -> std::collections::HashMap<String, (usize, usize)> {
+    let mut map = std::collections::HashMap::new();
+    let mut current_file: Option<String> = None;
+    let mut ins = 0usize;
+    let mut del = 0usize;
+
+    for line in diff.lines() {
+        if let Some(path) = line.strip_prefix("diff --git a/").and_then(|s| {
+            let mut it = s.split_whitespace();
+            let _ = it.next()?;
+            let b = it.next()?;
+            b.strip_prefix("b/")
+        }) {
+            if let Some(file) = current_file.take() {
+                map.insert(file, (ins, del));
+            }
+            current_file = Some(path.to_string());
+            ins = 0;
+            del = 0;
+            continue;
+        }
+        let line = line.trim_start();
+        if line.starts_with("+++") || line.starts_with("---") {
+            continue;
+        }
+        if line.starts_with('+') {
+            ins += 1;
+        } else if line.starts_with('-') {
+            del += 1;
+        }
+    }
+    if let Some(file) = current_file {
+        map.insert(file, (ins, del));
+    }
+    map
+}
+
+fn sum_stats(paths: &[String], stats: &std::collections::HashMap<String, (usize, usize)>) -> (usize, usize) {
+    paths.iter().fold((0, 0), |(i, d), p| {
+        let (si, sd) = stats.get(p.as_str()).copied().unwrap_or((0, 0));
+        (i + si, d + sd)
+    })
 }
 
 /// Check if a path matches any of the exclude glob patterns.

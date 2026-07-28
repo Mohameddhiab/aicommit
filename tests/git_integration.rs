@@ -171,6 +171,9 @@ fn test_diff_for_group_filters_paths() {
     let group = aicommit::splitter::Group {
         name: "src".into(),
         paths: vec!["src/lib.rs".into(), "src/bin.rs".into()],
+        file_count: 2,
+        insertions: 0,
+        deletions: 0,
     };
     let diff = t.repo.diff_for_group(&group).unwrap();
     assert!(
