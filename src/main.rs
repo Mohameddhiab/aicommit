@@ -1,6 +1,8 @@
-use git_doctor::{analyze, apply, config, display, git, hook, interactive, llm, parser, plan, report, splitter};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use git_doctor::{
+    analyze, apply, config, display, git, hook, interactive, llm, parser, plan, report, splitter,
+};
 use std::io::IsTerminal;
 use std::path::PathBuf;
 
@@ -134,19 +136,23 @@ async fn main() {
 
 async fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
-        DoctorCommand::Analyze { commits, format, open, output } => {
-            run_analyze(commits, &format, open, output).await
-        }
-        DoctorCommand::Plan { commits, output } => {
-            run_plan(commits, output).await
-        }
-        DoctorCommand::Apply { plan, confirm, force, yes } => {
+        DoctorCommand::Analyze {
+            commits,
+            format,
+            open,
+            output,
+        } => run_analyze(commits, &format, open, output).await,
+        DoctorCommand::Plan { commits, output } => run_plan(commits, output).await,
+        DoctorCommand::Apply {
+            plan,
+            confirm,
+            force,
+            yes,
+        } => {
             let should_apply = confirm || yes;
             run_apply(&plan, should_apply, force)
         }
-        DoctorCommand::Check { pre_push } => {
-            run_check(pre_push).await
-        }
+        DoctorCommand::Check { pre_push } => run_check(pre_push).await,
         DoctorCommand::Commit {
             single,
             interactive,
@@ -158,11 +164,26 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             api_key,
             timeout,
         } => {
-            run_commit(single, interactive, dry_run, no_stage, provider, model, lang, api_key, timeout).await
+            run_commit(
+                single,
+                interactive,
+                dry_run,
+                no_stage,
+                provider,
+                model,
+                lang,
+                api_key,
+                timeout,
+            )
+            .await
         }
-        DoctorCommand::Config { api_key, provider, model, base_url, show } => {
-            config::handle_config_command(api_key, provider, model, base_url, show).await
-        }
+        DoctorCommand::Config {
+            api_key,
+            provider,
+            model,
+            base_url,
+            show,
+        } => config::handle_config_command(api_key, provider, model, base_url, show).await,
         DoctorCommand::Undo => {
             let repo = git::GitRepo::from_current_dir()?;
 
@@ -183,25 +204,37 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             display::box_end();
             Ok(())
         }
-        DoctorCommand::Init => {
-            run_init().await
-        }
-        DoctorCommand::Uninstall => {
-            run_uninstall().await
-        }
+        DoctorCommand::Init => run_init().await,
+        DoctorCommand::Uninstall => run_uninstall().await,
     }
 }
 
-async fn run_analyze(commits: usize, format: &str, open: bool, output: Option<String>) -> anyhow::Result<()> {
+async fn run_analyze(
+    commits: usize,
+    format: &str,
+    open: bool,
+    output: Option<String>,
+) -> anyhow::Result<()> {
     let repo = git::GitRepo::from_current_dir()?;
     let history = repo.walk_history(commits)?;
 
     let scores: Vec<analyze::CommitScore> = history
         .iter()
-        .map(|(oid, subject, author, body, files, insertions, deletions)| {
-            let domains = vec!["root".to_string()];
-            analyze::score_commit(oid, subject, author, body, *files, *insertions, *deletions, &domains)
-        })
+        .map(
+            |(oid, subject, author, body, files, insertions, deletions)| {
+                let domains = vec!["root".to_string()];
+                analyze::score_commit(
+                    oid,
+                    subject,
+                    author,
+                    body,
+                    *files,
+                    *insertions,
+                    *deletions,
+                    &domains,
+                )
+            },
+        )
         .collect();
 
     let report = analyze::build_report(scores);
@@ -245,9 +278,20 @@ async fn run_plan(commits: usize, output: Option<String>) -> anyhow::Result<()> 
     let domains = vec!["root".to_string()];
     let scores: Vec<analyze::CommitScore> = history
         .iter()
-        .map(|(oid, subject, author, body, files, insertions, deletions)| {
-            analyze::score_commit(oid, subject, author, body, *files, *insertions, *deletions, &domains)
-        })
+        .map(
+            |(oid, subject, author, body, files, insertions, deletions)| {
+                analyze::score_commit(
+                    oid,
+                    subject,
+                    author,
+                    body,
+                    *files,
+                    *insertions,
+                    *deletions,
+                    &domains,
+                )
+            },
+        )
         .collect();
 
     let report = analyze::build_report(scores);
@@ -275,7 +319,10 @@ fn run_apply(plan_path: &str, confirm: bool, force: bool) -> anyhow::Result<()> 
     let result = apply::apply_plan(&repo, &plan, confirm, force)?;
 
     if confirm {
-        println!("  ✓ Applied {} operations (backup: {})", result.operations_applied, result.backup_tag);
+        println!(
+            "  ✓ Applied {} operations (backup: {})",
+            result.operations_applied, result.backup_tag
+        );
     }
     Ok(())
 }
@@ -287,15 +334,31 @@ async fn run_check(pre_push: bool) -> anyhow::Result<()> {
         let domains = vec!["root".to_string()];
         let scores: Vec<analyze::CommitScore> = history
             .iter()
-            .map(|(oid, subject, author, body, files, insertions, deletions)| {
-                analyze::score_commit(oid, subject, author, body, *files, *insertions, *deletions, &domains)
-            })
+            .map(
+                |(oid, subject, author, body, files, insertions, deletions)| {
+                    analyze::score_commit(
+                        oid,
+                        subject,
+                        author,
+                        body,
+                        *files,
+                        *insertions,
+                        *deletions,
+                        &domains,
+                    )
+                },
+            )
             .collect();
 
         let mut blocked = 0;
         for s in &scores {
             if s.is_wip || s.is_vague {
-                println!("  ✗ {} — \"{}\" ({})", &s.oid[..7], s.subject, if s.is_wip {"wip"} else {"vague"});
+                println!(
+                    "  ✗ {} — \"{}\" ({})",
+                    &s.oid[..7],
+                    s.subject,
+                    if s.is_wip { "wip" } else { "vague" }
+                );
                 blocked += 1;
             } else {
                 println!("  ✓ {} — \"{}\"", &s.oid[..7], s.subject);
@@ -321,7 +384,14 @@ async fn run_commit(
     api_key: Option<String>,
     timeout: u64,
 ) -> anyhow::Result<()> {
-    let cfg = config::load(provider.clone(), model.clone(), lang.clone(), api_key.clone(), None, timeout)?;
+    let cfg = config::load(
+        provider.clone(),
+        model.clone(),
+        lang.clone(),
+        api_key.clone(),
+        None,
+        timeout,
+    )?;
     let repo = git::GitRepo::from_current_dir()?;
 
     if repo.is_operation_in_progress() {
@@ -342,7 +412,11 @@ async fn run_commit(
 
     let provider = llm::build_provider(&cfg)?;
     let line_count = diff.lines().count();
-    display::box_start(&format!("{} — {} lines to analyze", provider.name(), line_count));
+    display::box_start(&format!(
+        "{} — {} lines to analyze",
+        provider.name(),
+        line_count
+    ));
 
     if single || splitter::should_treat_as_single(&diff) {
         let msg = llm::generate_commit_message(&provider, &diff, &cfg).await?;
@@ -355,12 +429,17 @@ async fn run_commit(
         };
         do_commit(&repo, &final_msg, None, dry_run)?;
     } else {
-        let groups = splitter::group_by_directory(&diff, cfg.commit_max_commits, &cfg.exclude_patterns)?;
+        let groups =
+            splitter::group_by_directory(&diff, cfg.commit_max_commits, &cfg.exclude_patterns)?;
         if interactive {
             let mut msgs = Vec::new();
             for group in &groups {
                 let gdiff = repo.diff_for_group(group)?;
-                display::box_line(&format!("◉ Group '{}' — {} lines", group.name, gdiff.lines().count()));
+                display::box_line(&format!(
+                    "◉ Group '{}' — {} lines",
+                    group.name,
+                    gdiff.lines().count()
+                ));
                 let msg = llm::generate_commit_message(&provider, &gdiff, &cfg).await?;
                 msgs.push(msg);
             }
@@ -372,7 +451,8 @@ async fn run_commit(
                         let final_msg = interactive::edit_message(
                             &parsed.format_with_template(&cfg.commit_template),
                         )?;
-                        let paths: Vec<PathBuf> = groups[idx].paths.iter().map(PathBuf::from).collect();
+                        let paths: Vec<PathBuf> =
+                            groups[idx].paths.iter().map(PathBuf::from).collect();
                         do_commit(&repo, &final_msg, Some(&paths), dry_run)?;
                     }
                 }
@@ -383,7 +463,11 @@ async fn run_commit(
         } else {
             for group in &groups {
                 let gdiff = repo.diff_for_group(group)?;
-                display::box_line(&format!("◉ Group '{}' — {} lines", group.name, gdiff.lines().count()));
+                display::box_line(&format!(
+                    "◉ Group '{}' — {} lines",
+                    group.name,
+                    gdiff.lines().count()
+                ));
                 let msg = llm::generate_commit_message(&provider, &gdiff, &cfg).await?;
                 let parsed = parser::parse_commit_message(&msg)?;
                 let final_msg = parsed.format_with_template(&cfg.commit_template);
@@ -396,7 +480,12 @@ async fn run_commit(
     Ok(())
 }
 
-fn do_commit(repo: &git::GitRepo, message: &str, paths: Option<&[PathBuf]>, dry_run: bool) -> anyhow::Result<()> {
+fn do_commit(
+    repo: &git::GitRepo,
+    message: &str,
+    paths: Option<&[PathBuf]>,
+    dry_run: bool,
+) -> anyhow::Result<()> {
     if dry_run {
         println!("  {} Would commit: {message}", "✔".green());
     } else {

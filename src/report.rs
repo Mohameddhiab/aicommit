@@ -2,14 +2,23 @@ use crate::analyze::{grade, CommitScore, HistoryReport, Severity};
 
 pub fn format_text(report: &HistoryReport) -> String {
     let g = grade(report.overall_score);
-    let mut out = format!(
-        "\nHistory Health: {g} ({}/100)\n",
-        report.overall_score
-    );
-    out.push_str(&format!("  Message quality:     {:>3}%\n", report.score_message_quality as u8));
-    out.push_str(&format!("  Atomicity:           {:>3}%\n", report.score_atomicity as u8));
-    out.push_str(&format!("  Size discipline:     {:>3}%\n", report.score_size as u8));
-    out.push_str(&format!("  Convention:          {:>3}%\n", report.score_convention as u8));
+    let mut out = format!("\nHistory Health: {g} ({}/100)\n", report.overall_score);
+    out.push_str(&format!(
+        "  Message quality:     {:>3}%\n",
+        report.score_message_quality as u8
+    ));
+    out.push_str(&format!(
+        "  Atomicity:           {:>3}%\n",
+        report.score_atomicity as u8
+    ));
+    out.push_str(&format!(
+        "  Size discipline:     {:>3}%\n",
+        report.score_size as u8
+    ));
+    out.push_str(&format!(
+        "  Convention:          {:>3}%\n",
+        report.score_convention as u8
+    ));
     out.push('\n');
 
     if report.issues.is_empty() {
@@ -24,7 +33,11 @@ pub fn format_text(report: &HistoryReport) -> String {
             Severity::Warning => "🟡",
             Severity::Info => "🟢",
         };
-        let short = if issue.oid.len() >= 7 { &issue.oid[..7] } else { &issue.oid };
+        let short = if issue.oid.len() >= 7 {
+            &issue.oid[..7]
+        } else {
+            &issue.oid
+        };
         out.push_str(&format!("  {icon} {short} — {}\n", issue.message));
     }
     out
@@ -81,8 +94,15 @@ pub fn format_markdown(report: &HistoryReport) -> String {
             Severity::Warning => "🟡 WARNING",
             Severity::Info => "🟢 INFO",
         };
-        let short = if issue.oid.len() >= 7 { &issue.oid[..7] } else { &issue.oid };
-        out.push_str(&format!("| {} | `{}` | {} |\n", severity_badge, short, issue.message));
+        let short = if issue.oid.len() >= 7 {
+            &issue.oid[..7]
+        } else {
+            &issue.oid
+        };
+        out.push_str(&format!(
+            "| {} | `{}` | {} |\n",
+            severity_badge, short, issue.message
+        ));
     }
 
     out.push_str("\n---\n");
@@ -98,19 +118,43 @@ pub fn format_per_commit_markdown(scores: &[CommitScore]) -> String {
     out.push_str("|--------|---------|-------|-----|---------|-----------|------|------------|\n");
 
     for c in scores {
-        let short = if c.oid.len() >= 7 { &c.oid[..7] } else { &c.oid };
+        let short = if c.oid.len() >= 7 {
+            &c.oid[..7]
+        } else {
+            &c.oid
+        };
         let flags = {
             let mut f = Vec::new();
-            if c.is_wip { f.push("⚠WIP"); }
-            if c.is_vague { f.push("⚠vague"); }
-            if c.is_oversized { f.push("⚠oversized"); }
-            if c.is_mixed_concern { f.push("⚠mixed"); }
-            if f.is_empty() { "✓".to_string() } else { f.join(" ") }
+            if c.is_wip {
+                f.push("⚠WIP");
+            }
+            if c.is_vague {
+                f.push("⚠vague");
+            }
+            if c.is_oversized {
+                f.push("⚠oversized");
+            }
+            if c.is_mixed_concern {
+                f.push("⚠mixed");
+            }
+            if f.is_empty() {
+                "✓".to_string()
+            } else {
+                f.join(" ")
+            }
         };
         out.push_str(&format!(
             "| `{}` | {} {} | {} | +{}/-{} | {}% | {}% | {}% | {}% |\n",
-            short, flags, c.subject, c.files_changed, c.insertions, c.deletions,
-            c.message_quality, c.atomicity, c.size_discipline, c.convention,
+            short,
+            flags,
+            c.subject,
+            c.files_changed,
+            c.insertions,
+            c.deletions,
+            c.message_quality,
+            c.atomicity,
+            c.size_discipline,
+            c.convention,
         ));
     }
     out
@@ -118,23 +162,28 @@ pub fn format_per_commit_markdown(scores: &[CommitScore]) -> String {
 
 pub fn generate_html(report: &HistoryReport) -> String {
     let g = grade(report.overall_score);
-    let issues_html: String = report.issues.iter().map(|i| {
-        let color = match i.severity {
-            Severity::Critical => "#ef4444",
-            Severity::Warning => "#f59e0b",
-            Severity::Info => "#22c55e",
-        };
-        format!(
-            "<tr style=\"color:{color}\"><td>{}</td><td>{}</td><td>{}</td></tr>\n",
-            match i.severity {
-                Severity::Critical => "CRITICAL",
-                Severity::Warning => "WARNING",
-                Severity::Info => "INFO",
-            },
-            &i.oid[..i.oid.len().min(7)],
-            i.message
-        )
-    }).collect::<Vec<_>>().join("");
+    let issues_html: String = report
+        .issues
+        .iter()
+        .map(|i| {
+            let color = match i.severity {
+                Severity::Critical => "#ef4444",
+                Severity::Warning => "#f59e0b",
+                Severity::Info => "#22c55e",
+            };
+            format!(
+                "<tr style=\"color:{color}\"><td>{}</td><td>{}</td><td>{}</td></tr>\n",
+                match i.severity {
+                    Severity::Critical => "CRITICAL",
+                    Severity::Warning => "WARNING",
+                    Severity::Info => "INFO",
+                },
+                &i.oid[..i.oid.len().min(7)],
+                i.message
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
 
     format!(
         r#"<!DOCTYPE html>

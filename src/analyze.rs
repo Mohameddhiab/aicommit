@@ -3,13 +3,34 @@ const ALLOWED_TYPES: &[&str] = &[
 ];
 
 const WIP_PATTERNS: &[&str] = &[
-    "wip", "fix me", "fixme", "todo", "temp", "tmp", "asdf", "test",
-    "draft", "needfix", "broken", "hack", "workaround",
+    "wip",
+    "fix me",
+    "fixme",
+    "todo",
+    "temp",
+    "tmp",
+    "asdf",
+    "test",
+    "draft",
+    "needfix",
+    "broken",
+    "hack",
+    "workaround",
 ];
 
 const VAGUE_PATTERNS: &[&str] = &[
-    "update", "fix", "stuff", "change", "thing", "misc", "whatever",
-    "bugfix", "small fix", "minor", "cleanup", "refactor",
+    "update",
+    "fix",
+    "stuff",
+    "change",
+    "thing",
+    "misc",
+    "whatever",
+    "bugfix",
+    "small fix",
+    "minor",
+    "cleanup",
+    "refactor",
 ];
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -189,12 +210,21 @@ pub fn build_report(commits: Vec<CommitScore>) -> HistoryReport {
         };
     }
 
-    let avg_msg: f64 = commits.iter().map(|c| c.message_quality as f64).sum::<f64>() / n;
+    let avg_msg: f64 = commits
+        .iter()
+        .map(|c| c.message_quality as f64)
+        .sum::<f64>()
+        / n;
     let avg_atomicity: f64 = commits.iter().map(|c| c.atomicity as f64).sum::<f64>() / n;
-    let avg_size: f64 = commits.iter().map(|c| c.size_discipline as f64).sum::<f64>() / n;
+    let avg_size: f64 = commits
+        .iter()
+        .map(|c| c.size_discipline as f64)
+        .sum::<f64>()
+        / n;
     let avg_convention: f64 = commits.iter().map(|c| c.convention as f64).sum::<f64>() / n;
 
-    let overall = (avg_msg * 0.3 + avg_atomicity * 0.3 + avg_size * 0.2 + avg_convention * 0.2).round() as u8;
+    let overall =
+        (avg_msg * 0.3 + avg_atomicity * 0.3 + avg_size * 0.2 + avg_convention * 0.2).round() as u8;
 
     let mut issues = Vec::new();
     for c in &commits {
@@ -209,7 +239,11 @@ pub fn build_report(commits: Vec<CommitScore>) -> HistoryReport {
             issues.push(Issue {
                 severity: Severity::Warning,
                 oid: c.oid.clone(),
-                message: format!("Mixed concern: {} files across {} domains", c.files_changed, count_domains(&c.subject)),
+                message: format!(
+                    "Mixed concern: {} files across {} domains",
+                    c.files_changed,
+                    count_domains(&c.subject)
+                ),
             });
         }
         if c.is_vague && !c.is_wip {
@@ -223,7 +257,10 @@ pub fn build_report(commits: Vec<CommitScore>) -> HistoryReport {
             issues.push(Issue {
                 severity: Severity::Warning,
                 oid: c.oid.clone(),
-                message: format!("Oversized: +{} -{} in {} files", c.insertions, c.deletions, c.files_changed),
+                message: format!(
+                    "Oversized: +{} -{} in {} files",
+                    c.insertions, c.deletions, c.files_changed
+                ),
             });
         }
         if c.message_quality < 60 {

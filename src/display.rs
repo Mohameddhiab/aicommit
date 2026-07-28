@@ -28,12 +28,7 @@ pub fn box_line(content: &str) {
     let w = term_width();
     let inner = content.width();
     let pad = w.saturating_sub(4 + inner);
-    println!(
-        "{}{}{}│",
-        "│  ".cyan().bold(),
-        content,
-        " ".repeat(pad)
-    );
+    println!("{}{}{}│", "│  ".cyan().bold(), content, " ".repeat(pad));
 }
 
 pub fn box_end() {

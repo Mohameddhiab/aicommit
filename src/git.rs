@@ -163,10 +163,20 @@ impl GitRepo {
 
             let tree = commit.tree()?;
             let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
-            let diff = self.repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
+            let diff = self
+                .repo
+                .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
 
             let (files, insertions, deletions) = diff_stats(&diff);
-            out.push((oid.to_string(), subject, author, body, files, insertions, deletions));
+            out.push((
+                oid.to_string(),
+                subject,
+                author,
+                body,
+                files,
+                insertions,
+                deletions,
+            ));
         }
         Ok(out)
     }
@@ -183,16 +193,20 @@ impl GitRepo {
         let head = self.repo.head()?.peel_to_commit()?;
         let oid = head.id();
         let full_ref = format!("refs/tags/{tag_name}");
-        self.repo.tag_lightweight(&full_ref, head.as_object(), false)?;
+        self.repo
+            .tag_lightweight(&full_ref, head.as_object(), false)?;
         Ok(oid.to_string())
     }
 
     /// Rollback HEAD to a previous doctor backup tag.
     pub fn rollback_to_tag(&self, tag_name: &str) -> Result<()> {
         let full_ref = format!("refs/tags/{tag_name}");
-        let obj = self.repo.revparse_single(&full_ref)
+        let obj = self
+            .repo
+            .revparse_single(&full_ref)
             .with_context(|| format!("backup tag '{tag_name}' not found"))?;
-        self.repo.reset(&obj, git2::ResetType::Hard, None)
+        self.repo
+            .reset(&obj, git2::ResetType::Hard, None)
             .context("rollback failed")?;
         // Cleanup: remove the tag after successful rollback
         self.repo.tag_delete(&full_ref).ok();

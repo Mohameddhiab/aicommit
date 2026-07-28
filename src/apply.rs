@@ -54,7 +54,8 @@ pub fn apply_plan(repo: &GitRepo, plan: &Plan, confirm: bool, force: bool) -> Re
     }
 
     // Phase 3 — Backup tag (caché, pas une branche publique)
-    let commit_oid = repo.create_backup_tag(&backup_tag)
+    let commit_oid = repo
+        .create_backup_tag(&backup_tag)
         .context("failed to create backup tag")?;
     println!("  ✓ Backup created at refs/tags/{backup_tag} ({commit_oid})");
 
@@ -75,9 +76,9 @@ pub fn apply_plan(repo: &GitRepo, plan: &Plan, confirm: bool, force: bool) -> Re
 /// Undo the last doctor apply by resetting to the backup tag.
 pub fn undo_last_apply(repo: &GitRepo) -> Result<()> {
     let tags = repo.list_backup_tags()?;
-    let latest = tags.first().ok_or_else(|| {
-        anyhow::anyhow!("no doctor backup tag found — nothing to undo")
-    })?;
+    let latest = tags
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("no doctor backup tag found — nothing to undo"))?;
     repo.rollback_to_tag(latest)?;
     println!("  ✓ Rolled back to {latest}");
     Ok(())
@@ -85,13 +86,28 @@ pub fn undo_last_apply(repo: &GitRepo) -> Result<()> {
 
 fn describe_op(op: &crate::plan::Operation) -> String {
     match op {
-        crate::plan::Operation::Squash { target_oid, into_oid, subject, .. } => {
+        crate::plan::Operation::Squash {
+            target_oid,
+            into_oid,
+            subject,
+            ..
+        } => {
             format!("SQUASH {target_oid} into {into_oid} — \"{subject}\"")
         }
-        crate::plan::Operation::Reword { oid, old_subject, suggested_subject, .. } => {
+        crate::plan::Operation::Reword {
+            oid,
+            old_subject,
+            suggested_subject,
+            ..
+        } => {
             format!("REWORD {oid} — \"{old_subject}\" → \"{suggested_subject}\"")
         }
-        crate::plan::Operation::Split { oid, subject, groups, .. } => {
+        crate::plan::Operation::Split {
+            oid,
+            subject,
+            groups,
+            ..
+        } => {
             let gs = groups.join(", ");
             format!("SPLIT {oid} — \"{subject}\" into [{gs}]")
         }
@@ -100,6 +116,8 @@ fn describe_op(op: &crate::plan::Operation) -> String {
 
 fn chrono_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let d = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let d = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     format!("{}", d.as_secs())
 }

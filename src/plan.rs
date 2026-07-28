@@ -104,20 +104,38 @@ pub fn format_plan_text(plan: &Plan) -> String {
         return "✓ No operations needed — history looks healthy.".into();
     }
 
-    let mut out = format!("Proposed cleanup plan ({} operations):\n", plan.operation_count);
+    let mut out = format!(
+        "Proposed cleanup plan ({} operations):\n",
+        plan.operation_count
+    );
     for (i, op) in plan.operations.iter().enumerate() {
         match op {
-            Operation::Squash { target_oid, into_oid, subject, reason } => {
+            Operation::Squash {
+                target_oid,
+                into_oid,
+                subject,
+                reason,
+            } => {
                 out.push_str(&format!(
                     "  {i}. SQUASH  {target_oid} into {into_oid}\n     → {reason}: \"{subject}\"\n"
                 ));
             }
-            Operation::Reword { oid, old_subject, suggested_subject, reason } => {
+            Operation::Reword {
+                oid,
+                old_subject,
+                suggested_subject,
+                reason,
+            } => {
                 out.push_str(&format!(
                     "  {i}. REWORD  {oid}\n     → \"{old_subject}\" → \"{suggested_subject}\"\n     → {reason}\n"
                 ));
             }
-            Operation::Split { oid, subject, groups, reason } => {
+            Operation::Split {
+                oid,
+                subject,
+                groups,
+                reason,
+            } => {
                 out.push_str(&format!(
                     "  {i}. SPLIT   {oid} \"{subject}\"\n     → {reason}\n"
                 ));

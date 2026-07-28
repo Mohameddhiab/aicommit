@@ -9,7 +9,8 @@ pub fn install_pre_push_hook(git_dir: &Path) -> Result<()> {
     let content = r#"#!/bin/sh
 # git-doctor pre-push hook — check commit quality before pushing
 exec doctor check --pre-push
-"#.to_string();
+"#
+    .to_string();
 
     std::fs::write(&hook_path, content).context("write pre-push hook")?;
 

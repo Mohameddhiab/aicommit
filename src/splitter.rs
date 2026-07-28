@@ -101,8 +101,14 @@ pub fn group_by_directory(diff: &str, max_groups: usize, exclude: &[String]) -> 
             .into_iter()
             .flat_map(|g| g.paths)
             .collect();
-        let m_insertions: usize = misc_paths.iter().map(|p| stats.get(p.as_str()).map(|s| s.0).unwrap_or(0)).sum();
-        let m_deletions: usize = misc_paths.iter().map(|p| stats.get(p.as_str()).map(|s| s.1).unwrap_or(0)).sum();
+        let m_insertions: usize = misc_paths
+            .iter()
+            .map(|p| stats.get(p.as_str()).map(|s| s.0).unwrap_or(0))
+            .sum();
+        let m_deletions: usize = misc_paths
+            .iter()
+            .map(|p| stats.get(p.as_str()).map(|s| s.1).unwrap_or(0))
+            .sum();
         groups.push(Group {
             name: "misc".to_string(),
             file_count: misc_paths.len(),
@@ -193,7 +199,10 @@ fn compute_stats(diff: &str) -> std::collections::HashMap<String, (usize, usize)
     map
 }
 
-fn sum_stats(paths: &[String], stats: &std::collections::HashMap<String, (usize, usize)>) -> (usize, usize) {
+fn sum_stats(
+    paths: &[String],
+    stats: &std::collections::HashMap<String, (usize, usize)>,
+) -> (usize, usize) {
     paths.iter().fold((0, 0), |(i, d), p| {
         let (si, sd) = stats.get(p.as_str()).copied().unwrap_or((0, 0));
         (i + si, d + sd)
