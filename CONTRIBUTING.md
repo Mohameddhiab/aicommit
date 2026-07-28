@@ -10,14 +10,14 @@ Thanks for your interest in git-doctor! Here's how to get started.
 ## Setup
 
 ```bash
-git clone https://github.com/Mohameddhiab/aicommit.git
-cd aicommit
+git clone https://github.com/Mohameddhiab/git-doctor.git
+cd git-doctor
 cargo build
 ```
 
 ## Development Workflow
 
-1. **Find or create an issue** — check [open issues](https://github.com/Mohameddhiab/aicommit/issues) first.
+1. **Find or create an issue** — check [open issues](https://github.com/Mohameddhiab/git-doctor/issues) first.
 2. **Fork the repo** and create a feature branch.
 3. **Make your changes** — keep them focused on one issue.
 4. **Run checks** before committing:

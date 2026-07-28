@@ -4,7 +4,7 @@
 
 <div align="center">
 
-[![CI](https://github.com/Mohameddhiab/aicommit/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohameddhiab/aicommit/actions/workflows/ci.yml)
+[![CI](https://github.com/Mohameddhiab/git-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/Mohameddhiab/git-doctor/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Rust](https://img.shields.io/badge/rust-2021-orange.svg)
 
@@ -90,10 +90,10 @@ doctor commit                       # generate atomic commit from staged changes
 
 ```bash
 cargo install git-doctor                           # from source
-cargo install --git https://github.com/Mohameddhiab/aicommit.git  # latest
+cargo install --git https://github.com/Mohameddhiab/git-doctor.git  # latest
 ```
 
-Pre-built binaries for Linux (x86_64), macOS (x86_64 + aarch64), and Windows (x86_64) on the [Releases page](https://github.com/Mohameddhiab/aicommit/releases).
+Pre-built binaries for Linux (x86_64), macOS (x86_64 + aarch64), and Windows (x86_64) on the [Releases page](https://github.com/Mohameddhiab/git-doctor/releases).
 
 ---
 
@@ -210,7 +210,7 @@ tests/
 
 If git-doctor helps you ship cleaner repositories, consider giving the repo a star ⭐.
 
-[![GitHub stars](https://img.shields.io/github/stars/Mohameddhiab/aicommit?style=social)](https://github.com/Mohameddhiab/aicommit/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/Mohameddhiab/git-doctor?style=social)](https://github.com/Mohameddhiab/git-doctor/stargazers)
 
 ---
 
