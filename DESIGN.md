@@ -108,8 +108,21 @@ Chaque état a un format fixe : **symbole + couleur + message court + détail op
 
 Règle : **annuler (Esc/Ctrl+C) doit annuler**, pas "tout sélectionner". Séparer explicitement les 3 issues possibles :
 
+**Prérequis** : `Group` (`splitter.rs`) n'a aujourd'hui que `name` + `paths` — pas de stats. Les ajouter directement à la struct plutôt que les recalculer côté sélecteur, puisque `group_by_directory` a déjà accès au texte du diff par fichier :
+
 ```rust
-// Note: Group needs new fields (file_count, insertions, deletions) in splitter.rs
+pub struct Group {
+    pub name: String,
+    pub paths: Vec<String>,
+    pub file_count: usize,
+    pub insertions: usize,
+    pub deletions: usize,
+}
+```
+
+`insertions`/`deletions` se calculent en comptant, pour chaque section de fichier déjà isolée par `diff --git `, les lignes commençant par `+`/`-` en excluant les en-têtes `+++`/`---`. Pas besoin de repasser par `git2` — c'est déjà dans la string `diff` que `group_by_directory` reçoit.
+
+```rust
 pub fn select_commits(groups: &[Group], msgs: &[String]) -> SelectResult {
     let items: Vec<String> = groups.iter().zip(msgs.iter())
         .map(|(g, m)| format!("{}  {m}  ({} files, +{} -{})",
@@ -188,11 +201,12 @@ Si provider cloud choisi :
 
 **Étape 3 — Premier commit réel** : enchaîne directement sur le flux normal (dry-run → sélection → commit), pas d'écran supplémentaire. Le setup ne doit jamais être un mur séparé de l'usage réel.
 
-**Règle générale install** : le wizard ne se relance jamais automatiquement une fois configuré. `aicommit config wizard` permet de le relancer à la demande.
+**Règle générale install** : le wizard ne se relance jamais automatiquement une fois configuré. `aicommit wizard` permet de le relancer à la demande.
 
-**Détection CI** : si `CI` ou `GITHUB_ACTIONS` est présent dans l'environnement, le wizard est automatiquement skipé (pas de TTY).
-
-**Sentinel** : fichier `~/.config/aicommit/.config-done` créé après le premier wizard. Sa présence skip le wizard au prochain lancement.
+**Détails d'implémentation** :
+- État "déjà configuré" stocké via un fichier sentinel `~/.config/aicommit/.config-done`, même mécanisme que `.banner-shown` dans `banner.rs` — pas de nouveau système à inventer.
+- Le wizard **ne se déclenche jamais** si la variable d'env `CI` est présente (ou `--yes` passé) : dans ce cas, absence de config = erreur claire immédiate (`✗ No provider configured — run 'aicommit wizard' or set ANTHROPIC_API_KEY`), jamais un prompt interactif qui bloquerait un pipeline.
+- `aicommit wizard` (commande explicite, section 8) écrase le sentinel et relance l'écran complet, y compris si déjà configuré.
 
 ---
 
@@ -208,20 +222,19 @@ USAGE:
   aicommit <COMMAND>
 
 COMMANDS:
-  config     Manage provider and behavior settings
-  undo       Revert the last aicommit-generated commit
-  wizard     Re-run the interactive setup
+  aicommit config     Manage provider and behavior settings
+  aicommit undo       Revert the last aicommit-generated commit
+  aicommit wizard     Re-run the interactive setup
 
 OPTIONS:
-  --dry-run       Preview commits without applying them
-  --single        Force a single commit, skip atomic splitting
-  --yes           Skip interactive selection, apply all groups
-  --provider <p>  AI provider (ollama, openai, anthropic, ...)
-  --model <m>     Model override (e.g. gpt-4o, qwen2.5-coder:7b)
-  --no-color      Disable colored output
-  --quiet         Only print errors
-  -h, --help      Print help
-  -V, --version   Print version
+  --dry-run           Preview commits without applying them
+  --single            Force a single commit instead of splitting into groups
+  --model <MODEL>     Override the provider's default model for this run
+  --yes               Skip interactive selection, apply all groups
+  --no-color          Disable colored output
+  --quiet             Only print errors
+  -h, --help          Print help
+  -V, --version       Print version
 
 Run `aicommit` inside a git repo with staged/unstaged changes to get started.
 ```
@@ -231,16 +244,15 @@ Run `aicommit` inside a git repo with staged/unstaged changes to get started.
 ## 9. Checklist d'implémentation
 
 | Fix | Fichier | Priorité | Effort |
-|---|---|---|---|---|
-| Ctrl+C ne doit plus committer "tout" | `interactive.rs` | 🔴 Critique | S — 1h |
-| Padding boîtes en largeur d'affichage (`unicode-width`) | `display.rs` | 🔴 Critique | S — 1h |
-| Version dynamique (`env!("CARGO_PKG_VERSION")`) | `banner.rs` | 🟡 Rapide | S — 30min |
-| Respect `NO_COLOR` + flag `--no-color` | `main.rs` | 🟡 Rapide | S — 1h |
-| Largeur de boîte adaptative (`terminal_size`) | `display.rs` | 🟢 Moyen | M — 2h |
-| Stats fichiers/lignes dans le sélecteur | `interactive.rs`, `splitter.rs` | 🟢 Moyen | M — 2h |
-| Wizard de setup au premier lancement | nouveau `src/wizard.rs` | 🟢 Moyen | L — 5h |
-| Format d'erreur standardisé (quoi/pourquoi/fix) | `main.rs` + tous les modules | 🟢 Moyen | M — 3h |
-| `--help` restructuré par intention | `main.rs` (clap) | 🔵 Nice-to-have | S — 1h |
+|---|---|---|---|
+| Ctrl+C ne doit plus committer "tout" | `interactive.rs` | 🔴 Critique | S (~1h) |
+| Respect `NO_COLOR` + flag `--no-color` | `main.rs` | 🔴 Critique | S (~1h) |
+| Padding boîtes en largeur d'affichage + largeur adaptative (`unicode-width`, `terminal_size`) | `display.rs` | 🔴 Critique | M (2-3h) |
+| Version dynamique (`env!("CARGO_PKG_VERSION")`) | `banner.rs` | 🟡 Rapide | S (~30min) |
+| Champs stats sur `Group` + affichage dans le sélecteur | `splitter.rs`, `interactive.rs` | 🟢 Moyen | M (touche parsing diff + UI) |
+| Wizard de setup au premier lancement | nouveau `src/wizard.rs` | 🟡 Nouvelle feature | L (4-5h) |
+| Format d'erreur standardisé (quoi/pourquoi/fix) | tous les `Err` remontés à `main.rs` | 🟢 Moyen | M (2-3h, transverse) |
+| `--single` / `--model`, `--help` restructuré par intention | `main.rs` (clap) | 🔵 Nice-to-have | S (~1h) |
 
 ---
 
