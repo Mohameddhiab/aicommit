@@ -23,12 +23,15 @@ pub enum DoctorCommand {
         /// Number of recent commits to analyze (default: 10).
         #[arg(long, default_value_t = 10)]
         commits: usize,
-        /// Output format: text, json, html (default: text).
+        /// Output format: text, json, html, markdown (default: text).
         #[arg(long, default_value_t = String::from("text"))]
         format: String,
         /// Open HTML report in browser.
         #[arg(long)]
         open: bool,
+        /// Save report to file.
+        #[arg(long)]
+        output: Option<String>,
     },
     /// Generate a cleanup plan based on analysis.
     Plan {
@@ -131,8 +134,8 @@ async fn main() {
 
 async fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
-        DoctorCommand::Analyze { commits, format, open } => {
-            run_analyze(commits, &format, open).await
+        DoctorCommand::Analyze { commits, format, open, output } => {
+            run_analyze(commits, &format, open, output).await
         }
         DoctorCommand::Plan { commits, output } => {
             run_plan(commits, output).await
@@ -189,7 +192,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     }
 }
 
-async fn run_analyze(commits: usize, format: &str, open: bool) -> anyhow::Result<()> {
+async fn run_analyze(commits: usize, format: &str, open: bool, output: Option<String>) -> anyhow::Result<()> {
     let repo = git::GitRepo::from_current_dir()?;
     let history = repo.walk_history(commits)?;
 
@@ -203,18 +206,33 @@ async fn run_analyze(commits: usize, format: &str, open: bool) -> anyhow::Result
 
     let report = analyze::build_report(scores);
 
-    match format {
-        "json" => println!("{}", report::format_json(&report)),
+    let content: String = match format {
+        "json" => report::format_json(&report),
         "html" => {
             let html = report::generate_html(&report);
-            let path = std::env::temp_dir().join("doctor-report.html");
-            std::fs::write(&path, &html)?;
             if open {
+                let path = std::env::temp_dir().join("doctor-report.html");
+                std::fs::write(&path, &html)?;
                 open::that(&path).ok();
+                println!("  Report opened in browser");
             }
-            println!("  Report saved to {}", path.display());
+            html
         }
-        _ => println!("{}", report::format_text(&report)),
+        "markdown" => {
+            let mut md = report::format_markdown(&report);
+            md.push('\n');
+            md.push_str(&report::format_per_commit_markdown(&report.commits));
+            md
+        }
+        _ => report::format_text(&report),
+    };
+
+    match output {
+        Some(path) => {
+            std::fs::write(&path, &content)?;
+            println!("  Report saved to {path}");
+        }
+        None => println!("{content}"),
     }
 
     Ok(())

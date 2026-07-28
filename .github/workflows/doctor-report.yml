@@ -1,0 +1,41 @@
+name: Doctor Report
+
+on:
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for git history
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install git-doctor
+        run: cargo install git-doctor
+
+      - name: Analyze history
+        run: doctor analyze --commits 20 --format markdown --output doctor-report.md
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: doctor-report
+          path: doctor-report.md
+
+      - name: Comment PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('doctor-report.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
