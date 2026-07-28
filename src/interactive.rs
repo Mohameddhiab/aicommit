@@ -3,9 +3,19 @@
 use crate::splitter::Group;
 use anyhow::Result;
 
+/// Result of the multi-select commit picker.
+#[derive(Debug)]
+pub enum SelectResult {
+    /// User explicitly confirmed some selections.
+    Some(Vec<usize>),
+    /// User confirmed with nothing selected (explicit empty).
+    None,
+    /// User cancelled via Esc/Ctrl+C.
+    Cancelled,
+}
+
 /// Let the user pick which groups to commit via a multi-select menu.
-/// Returns the indices (into `groups`) of the selected items.
-pub fn select_commits(groups: &[Group], msgs: &[String]) -> Vec<usize> {
+pub fn select_commits(groups: &[Group], msgs: &[String]) -> SelectResult {
     let items: Vec<String> = groups
         .iter()
         .zip(msgs.iter())
@@ -13,17 +23,15 @@ pub fn select_commits(groups: &[Group], msgs: &[String]) -> Vec<usize> {
         .collect();
 
     let selection = dialoguer::MultiSelect::new()
-        .with_prompt("Select commits to apply (space to toggle, enter to confirm)")
+        .with_prompt("Select commits to apply  [space: toggle, enter: confirm, esc: cancel]")
         .items(&items)
-        .interact()
-        .ok()
-        .unwrap_or_default();
+        .interact_opt();
 
-    // If nothing selected, the user may have hit enter by accident — default to all.
-    if selection.is_empty() {
-        return (0..groups.len()).collect();
+    match selection {
+        Ok(Some(sel)) if sel.is_empty() => SelectResult::None,
+        Ok(Some(sel)) => SelectResult::Some(sel),
+        Ok(None) | Err(_) => SelectResult::Cancelled,
     }
-    selection
 }
 
 /// Let the user edit a commit message before committing.

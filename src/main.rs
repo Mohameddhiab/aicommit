@@ -6,6 +6,7 @@
 use aicommit::{banner, config, display, git, interactive, llm, parser, splitter};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -57,6 +58,10 @@ pub struct Cli {
     #[arg(long, default_value_t = 120)]
     pub timeout: u64,
 
+    /// Disable colored output.
+    #[arg(long)]
+    pub no_color: bool,
+
     /// List available models from the selected provider and exit.
     #[arg(long)]
     pub list_models: bool,
@@ -96,8 +101,19 @@ pub enum Command {
 
 #[tokio::main]
 async fn main() {
+    // Respect NO_COLOR env var before any output.
+    if std::env::var("NO_COLOR").is_ok() || !std::io::stdout().is_terminal() {
+        colored::control::set_override(false);
+    }
+
     banner::maybe_print();
     let cli = Cli::parse();
+
+    // --no-color CLI flag overrides auto-detection.
+    if cli.no_color {
+        colored::control::set_override(false);
+    }
+
     if let Err(e) = run(cli).await {
         print_error(&e);
         std::process::exit(1);
@@ -235,13 +251,21 @@ async fn commit_workflow(cli: Cli) -> anyhow::Result<()> {
             msgs.push(msg);
         }
         display::box_end();
-        let selected = interactive::select_commits(&groups, &msgs);
-        for &idx in &selected {
-            let parsed = parser::parse_commit_message(&msgs[idx])?;
-            let final_msg =
-                interactive::edit_message(&parsed.format_with_template(&cfg.commit_template))?;
-            let commit_paths: Vec<PathBuf> = groups[idx].paths.iter().map(PathBuf::from).collect();
-            do_commit(&final_msg, Some(&commit_paths), cli.dry_run)?;
+        match interactive::select_commits(&groups, &msgs) {
+            interactive::SelectResult::Some(selected) => {
+                for &idx in &selected {
+                    let parsed = parser::parse_commit_message(&msgs[idx])?;
+                    let final_msg = interactive::edit_message(
+                        &parsed.format_with_template(&cfg.commit_template),
+                    )?;
+                    let commit_paths: Vec<PathBuf> =
+                        groups[idx].paths.iter().map(PathBuf::from).collect();
+                    do_commit(&final_msg, Some(&commit_paths), cli.dry_run)?;
+                }
+            }
+            interactive::SelectResult::None | interactive::SelectResult::Cancelled => {
+                display::box_line("No commits selected — exiting.");
+            }
         }
     } else {
         for group in &groups {
