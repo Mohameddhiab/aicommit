@@ -43,12 +43,15 @@ pub enum DoctorCommand {
     Apply {
         /// Path to plan JSON file.
         plan: String,
-        /// Dry-run: show what would be done without applying.
+        /// Actually apply the plan (default: dry-run preview).
         #[arg(long)]
-        dry_run: bool,
-        /// Force apply even if commits have been pushed.
+        confirm: bool,
+        /// Skip safety checks (remote detection, in-progress operations).
         #[arg(long)]
         force: bool,
+        /// Skip confirmation prompt (CI mode).
+        #[arg(long)]
+        yes: bool,
     },
     /// Pre-push hook or CI gate to check commit quality.
     Check {
@@ -134,8 +137,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         DoctorCommand::Plan { commits, output } => {
             run_plan(commits, output).await
         }
-        DoctorCommand::Apply { plan, dry_run, force } => {
-            run_apply(&plan, dry_run, force)
+        DoctorCommand::Apply { plan, confirm, force, yes } => {
+            let should_apply = confirm || yes;
+            run_apply(&plan, should_apply, force)
         }
         DoctorCommand::Check { pre_push } => {
             run_check(pre_push).await
@@ -158,6 +162,18 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         }
         DoctorCommand::Undo => {
             let repo = git::GitRepo::from_current_dir()?;
+
+            // Try doctor apply rollback first; fall back to simple undo
+            if let Ok(tags) = repo.list_backup_tags() {
+                if !tags.is_empty() {
+                    apply::undo_last_apply(&repo)?;
+                    display::box_start("Undo");
+                    display::box_line("Last doctor apply has been rolled back.");
+                    display::box_end();
+                    return Ok(());
+                }
+            }
+
             repo.undo_last_commit()?;
             display::box_start("Undo");
             display::box_line("Last commit has been undone (git reset --soft HEAD~1).");
@@ -233,17 +249,15 @@ async fn run_plan(commits: usize, output: Option<String>) -> anyhow::Result<()> 
     Ok(())
 }
 
-fn run_apply(plan_path: &str, dry_run: bool, force: bool) -> anyhow::Result<()> {
+fn run_apply(plan_path: &str, confirm: bool, force: bool) -> anyhow::Result<()> {
     let content = std::fs::read_to_string(plan_path)?;
     let plan: plan::Plan = serde_json::from_str(&content)?;
     let repo = git::GitRepo::from_current_dir()?;
 
-    let result = apply::apply_plan(&repo, &plan, dry_run, force)?;
+    let result = apply::apply_plan(&repo, &plan, confirm, force)?;
 
-    if dry_run {
-        println!("  Dry-run complete. Pass --dry-run to actually apply.");
-    } else {
-        println!("  ✓ Applied {} operations (backup: {})", result.operations_applied, result.backup_branch);
+    if confirm {
+        println!("  ✓ Applied {} operations (backup: {})", result.operations_applied, result.backup_tag);
     }
     Ok(())
 }

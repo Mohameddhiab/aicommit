@@ -177,6 +177,45 @@ impl GitRepo {
         Ok(())
     }
 
+    /// Create a hidden backup tag under refs/doctor/backup-<ts>.
+    /// Unlike a branch, a tag won't appear in `git branch` listings.
+    pub fn create_backup_tag(&self, tag_name: &str) -> Result<String> {
+        let head = self.repo.head()?.peel_to_commit()?;
+        let oid = head.id();
+        let full_ref = format!("refs/tags/{tag_name}");
+        self.repo.tag_lightweight(&full_ref, head.as_object(), false)?;
+        Ok(oid.to_string())
+    }
+
+    /// Rollback HEAD to a previous doctor backup tag.
+    pub fn rollback_to_tag(&self, tag_name: &str) -> Result<()> {
+        let full_ref = format!("refs/tags/{tag_name}");
+        let obj = self.repo.revparse_single(&full_ref)
+            .with_context(|| format!("backup tag '{tag_name}' not found"))?;
+        self.repo.reset(&obj, git2::ResetType::Hard, None)
+            .context("rollback failed")?;
+        // Cleanup: remove the tag after successful rollback
+        self.repo.tag_delete(&full_ref).ok();
+        Ok(())
+    }
+
+    /// List all doctor backup tags sorted by creation time (newest first).
+    pub fn list_backup_tags(&self) -> Result<Vec<String>> {
+        let mut tags = Vec::new();
+        self.repo.tag_foreach(|oid, name| {
+            if let Ok(name) = std::str::from_utf8(name) {
+                if name.starts_with("refs/tags/doctor-backup-") {
+                    let short = name.trim_start_matches("refs/tags/");
+                    tags.push((oid, short.to_string()));
+                }
+            }
+            true
+        })?;
+        tags.sort_by_key(|k| k.0);
+        tags.reverse();
+        Ok(tags.into_iter().map(|(_, n)| n).collect())
+    }
+
     pub fn remote_exists(&self) -> Result<bool> {
         Ok(self.repo.remotes()?.iter().any(|r| r.is_some()))
     }
