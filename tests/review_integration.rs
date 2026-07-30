@@ -13,7 +13,10 @@ diff --git a/config.js b/config.js
     let report = run_code_review(diff);
     assert!(!report.passed);
     assert!(report.score < 100);
-    assert!(report.issues.iter().any(|i| i.severity == ReviewSeverity::Critical));
+    assert!(report
+        .issues
+        .iter()
+        .any(|i| i.severity == ReviewSeverity::Critical));
 }
 
 #[test]
@@ -28,7 +31,10 @@ diff --git a/app.js b/app.js
 
     let report = run_code_review(diff);
     assert!(report.passed); // Warning doesn't fail pass criteria unless critical
-    assert!(report.issues.iter().any(|i| i.severity == ReviewSeverity::Warning));
+    assert!(report
+        .issues
+        .iter()
+        .any(|i| i.severity == ReviewSeverity::Warning));
 }
 
 #[test]

@@ -18,32 +18,33 @@ pub fn format_text(report: &HistoryReport) -> String {
 
     // Dimension breakdown table
     let mut dim_table = Table::new();
-    dim_table
-        .load_preset(UTF8_FULL)
-        .set_header(vec![
-            Cell::new("Dimension").add_attribute(Attribute::Bold),
-            Cell::new("Score").add_attribute(Attribute::Bold),
-            Cell::new("Gauge").add_attribute(Attribute::Bold),
-        ]);
+    dim_table.load_preset(UTF8_FULL).set_header(vec![
+        Cell::new("Dimension").add_attribute(Attribute::Bold),
+        Cell::new("Score").add_attribute(Attribute::Bold),
+        Cell::new("Gauge").add_attribute(Attribute::Bold),
+    ]);
 
     dim_table.add_row(vec![
         Cell::new("Message Quality"),
-        Cell::new(&format!("{:.0}%", report.score_message_quality)),
-        Cell::new(display::render_score_bar(report.score_message_quality as u8, 15)),
+        Cell::new(format!("{:.0}%", report.score_message_quality)),
+        Cell::new(display::render_score_bar(
+            report.score_message_quality as u8,
+            15,
+        )),
     ]);
     dim_table.add_row(vec![
         Cell::new("Atomicity"),
-        Cell::new(&format!("{:.0}%", report.score_atomicity)),
+        Cell::new(format!("{:.0}%", report.score_atomicity)),
         Cell::new(display::render_score_bar(report.score_atomicity as u8, 15)),
     ]);
     dim_table.add_row(vec![
         Cell::new("Size Discipline"),
-        Cell::new(&format!("{:.0}%", report.score_size)),
+        Cell::new(format!("{:.0}%", report.score_size)),
         Cell::new(display::render_score_bar(report.score_size as u8, 15)),
     ]);
     dim_table.add_row(vec![
         Cell::new("Convention Compliance"),
-        Cell::new(&format!("{:.0}%", report.score_convention)),
+        Cell::new(format!("{:.0}%", report.score_convention)),
         Cell::new(display::render_score_bar(report.score_convention as u8, 15)),
     ]);
 
@@ -65,19 +66,20 @@ pub fn format_text(report: &HistoryReport) -> String {
     ));
 
     if report.issues.is_empty() {
-        out.push_str(&format!("{}\n", "✓ Perfect history! No issues detected.".green().bold()));
+        out.push_str(&format!(
+            "{}\n",
+            "✓ Perfect history! No issues detected.".green().bold()
+        ));
         return out;
     }
 
     // Issues Table
     let mut issue_table = Table::new();
-    issue_table
-        .load_preset(UTF8_FULL)
-        .set_header(vec![
-            Cell::new("Severity").add_attribute(Attribute::Bold),
-            Cell::new("Commit").add_attribute(Attribute::Bold),
-            Cell::new("Issue Details").add_attribute(Attribute::Bold),
-        ]);
+    issue_table.load_preset(UTF8_FULL).set_header(vec![
+        Cell::new("Severity").add_attribute(Attribute::Bold),
+        Cell::new("Commit").add_attribute(Attribute::Bold),
+        Cell::new("Issue Details").add_attribute(Attribute::Bold),
+    ]);
 
     for issue in report.issues.iter().take(12) {
         let (sev_str, color) = match issue.severity {
@@ -85,7 +87,11 @@ pub fn format_text(report: &HistoryReport) -> String {
             Severity::Warning => ("🟡 WARNING", Color::Yellow),
             Severity::Info => ("🟢 INFO", Color::Cyan),
         };
-        let short_oid = if issue.oid.len() >= 7 { &issue.oid[..7] } else { &issue.oid };
+        let short_oid = if issue.oid.len() >= 7 {
+            &issue.oid[..7]
+        } else {
+            &issue.oid
+        };
 
         issue_table.add_row(vec![
             Cell::new(sev_str).fg(color).add_attribute(Attribute::Bold),
@@ -94,7 +100,10 @@ pub fn format_text(report: &HistoryReport) -> String {
         ]);
     }
 
-    out.push_str(&format!("🚨 Detected Issues (showing top {}):\n", report.issues.len().min(12)));
+    out.push_str(&format!(
+        "🚨 Detected Issues (showing top {}):\n",
+        report.issues.len().min(12)
+    ));
     out.push_str(&issue_table.to_string());
     out.push('\n');
     out
@@ -146,7 +155,10 @@ pub fn format_markdown(report: &HistoryReport) -> String {
         return out;
     }
 
-    out.push_str(&format!("### 🚨 Issues ({} total)\n\n", report.issues.len()));
+    out.push_str(&format!(
+        "### 🚨 Issues ({} total)\n\n",
+        report.issues.len()
+    ));
     out.push_str("| Severity | Commit | Issue Description |\n");
     out.push_str("|----------|--------|-------------------|\n");
 
@@ -156,7 +168,11 @@ pub fn format_markdown(report: &HistoryReport) -> String {
             Severity::Warning => "🟡 WARNING",
             Severity::Info => "🟢 INFO",
         };
-        let short = if issue.oid.len() >= 7 { &issue.oid[..7] } else { &issue.oid };
+        let short = if issue.oid.len() >= 7 {
+            &issue.oid[..7]
+        } else {
+            &issue.oid
+        };
         out.push_str(&format!(
             "| {} | `{}` | {} |\n",
             severity_badge, short, issue.message
@@ -165,7 +181,7 @@ pub fn format_markdown(report: &HistoryReport) -> String {
 
     out.push_str("\n---\n");
     out.push_str(
-        "_Report generated by [git-doctor](https://github.com/Mohameddhiab/git-doctor)_\n"
+        "_Report generated by [git-doctor](https://github.com/Mohameddhiab/git-doctor)_\n",
     );
     out
 }
@@ -176,19 +192,43 @@ pub fn format_per_commit_markdown(scores: &[CommitScore]) -> String {
     out.push_str("|--------|---------|-------|-----|---------|-----------|------|------------|\n");
 
     for c in scores {
-        let short = if c.oid.len() >= 7 { &c.oid[..7] } else { &c.oid };
+        let short = if c.oid.len() >= 7 {
+            &c.oid[..7]
+        } else {
+            &c.oid
+        };
         let flags = {
             let mut f = Vec::new();
-            if c.is_wip { f.push("⚠WIP"); }
-            if c.is_vague { f.push("⚠vague"); }
-            if c.is_oversized { f.push("⚠oversized"); }
-            if c.is_mixed_concern { f.push("⚠mixed"); }
-            if f.is_empty() { "✓".to_string() } else { f.join(" ") }
+            if c.is_wip {
+                f.push("⚠WIP");
+            }
+            if c.is_vague {
+                f.push("⚠vague");
+            }
+            if c.is_oversized {
+                f.push("⚠oversized");
+            }
+            if c.is_mixed_concern {
+                f.push("⚠mixed");
+            }
+            if f.is_empty() {
+                "✓".to_string()
+            } else {
+                f.join(" ")
+            }
         };
         out.push_str(&format!(
             "| `{}` | {} {} | {} | +{}/-{} | {}% | {}% | {}% | {}% |\n",
-            short, flags, c.subject, c.files_changed, c.insertions, c.deletions,
-            c.message_quality, c.atomicity, c.size_discipline, c.convention,
+            short,
+            flags,
+            c.subject,
+            c.files_changed,
+            c.insertions,
+            c.deletions,
+            c.message_quality,
+            c.atomicity,
+            c.size_discipline,
+            c.convention,
         ));
     }
     out
@@ -507,7 +547,13 @@ pub fn generate_html(report: &HistoryReport) -> String {
         crit = crit,
         warn = warn,
         info = info,
-        issue_color = if crit > 0 { "#ef4444" } else if warn > 0 { "#f59e0b" } else { "#22c55e" },
+        issue_color = if crit > 0 {
+            "#ef4444"
+        } else if warn > 0 {
+            "#f59e0b"
+        } else {
+            "#22c55e"
+        },
         mq = report.score_message_quality as u8,
         at = report.score_atomicity as u8,
         sz = report.score_size as u8,

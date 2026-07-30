@@ -102,10 +102,13 @@ pub fn run_code_review(diff: &str) -> ReviewReport {
                         severity: ReviewSeverity::Warning,
                         path: current_file.clone(),
                         line_num: Some(current_line),
-                        message: "Debug statement left in code (console.log / debugger)".to_string(),
+                        message: "Debug statement left in code (console.log / debugger)"
+                            .to_string(),
                         snippet: Some(content.trim().to_string()),
                     });
-                } else if content.contains("binding.pry") || content.contains("import pdb; pdb.set_trace()") {
+                } else if content.contains("binding.pry")
+                    || content.contains("import pdb; pdb.set_trace()")
+                {
                     issues.push(ReviewIssue {
                         severity: ReviewSeverity::Warning,
                         path: current_file.clone(),
@@ -113,7 +116,9 @@ pub fn run_code_review(diff: &str) -> ReviewReport {
                         message: "Debugger breakpoint left in code".to_string(),
                         snippet: Some(content.trim().to_string()),
                     });
-                } else if content.to_lowercase().contains("todo:") || content.to_lowercase().contains("fixme:") {
+                } else if content.to_lowercase().contains("todo:")
+                    || content.to_lowercase().contains("fixme:")
+                {
                     issues.push(ReviewIssue {
                         severity: ReviewSeverity::Info,
                         path: current_file.clone(),
@@ -149,10 +154,23 @@ pub fn run_code_review(diff: &str) -> ReviewReport {
 
 fn is_code_file(path: &str) -> bool {
     let p = Path::new(path);
-    match p.extension().and_then(|e| e.to_str()) {
-        Some("rs" | "js" | "ts" | "jsx" | "tsx" | "py" | "go" | "java" | "c" | "cpp" | "h" | "rb" | "php") => true,
-        _ => false,
-    }
+    matches!(
+        p.extension().and_then(|e| e.to_str()),
+        Some(
+            "rs" | "js"
+                | "ts"
+                | "jsx"
+                | "tsx"
+                | "py"
+                | "go"
+                | "java"
+                | "c"
+                | "cpp"
+                | "h"
+                | "rb"
+                | "php"
+        )
+    )
 }
 
 pub fn render_review_cli(report: &ReviewReport) -> String {
@@ -169,19 +187,22 @@ pub fn render_review_cli(report: &ReviewReport) -> String {
     ));
 
     if report.issues.is_empty() {
-        out.push_str(&format!("{}\n", "  ✓ No security vulnerabilities or debug artifacts found.".green().bold()));
+        out.push_str(&format!(
+            "{}\n",
+            "  ✓ No security vulnerabilities or debug artifacts found."
+                .green()
+                .bold()
+        ));
         return out;
     }
 
     let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .set_header(vec![
-            Cell::new("Severity").add_attribute(Attribute::Bold),
-            Cell::new("Location").add_attribute(Attribute::Bold),
-            Cell::new("Issue").add_attribute(Attribute::Bold),
-            Cell::new("Snippet").add_attribute(Attribute::Bold),
-        ]);
+    table.load_preset(UTF8_FULL).set_header(vec![
+        Cell::new("Severity").add_attribute(Attribute::Bold),
+        Cell::new("Location").add_attribute(Attribute::Bold),
+        Cell::new("Issue").add_attribute(Attribute::Bold),
+        Cell::new("Snippet").add_attribute(Attribute::Bold),
+    ]);
 
     for issue in &report.issues {
         let (sev_str, color) = match issue.severity {

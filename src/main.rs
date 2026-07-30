@@ -267,7 +267,10 @@ async fn run_analyze(
                 let path = std::env::temp_dir().join("doctor-report.html");
                 std::fs::write(&path, &html)?;
                 open::that(&path).ok();
-                println!("  ✓ Interactive Health Dashboard opened in browser ({})", path.display());
+                println!(
+                    "  ✓ Interactive Health Dashboard opened in browser ({})",
+                    path.display()
+                );
             }
             html
         }
@@ -292,7 +295,8 @@ async fn run_analyze(
 }
 
 async fn run_review() -> anyhow::Result<()> {
-    let spinner = display::create_spinner("Scanning staged changes for security leaks & debug artifacts...");
+    let spinner =
+        display::create_spinner("Scanning staged changes for security leaks & debug artifacts...");
     let repo = git::GitRepo::from_current_dir()?;
     let diff = repo.staged_diff()?;
     spinner.finish_and_clear();
@@ -403,7 +407,10 @@ async fn run_check(pre_push: bool) -> anyhow::Result<()> {
 
         let has_wip = report.commits.iter().any(|c| c.is_wip);
         if has_wip {
-            eprintln!("{} Blocked push: WIP commits detected in recent history.", "✗".red().bold());
+            eprintln!(
+                "{} Blocked push: WIP commits detected in recent history.",
+                "✗".red().bold()
+            );
             eprintln!("  Run `doctor analyze` for details or `doctor plan` to resolve.");
             std::process::exit(1);
         }
@@ -480,7 +487,10 @@ async fn run_commit(
         let files = repo.staged_files()?;
         vec![splitter::Group {
             name: "all".to_string(),
-            paths: files.iter().map(|p| p.to_string_lossy().to_string()).collect(),
+            paths: files
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect(),
             file_count: files.len(),
             insertions: 0,
             deletions: 0,
@@ -517,7 +527,8 @@ async fn run_commit(
                     if dry_run {
                         println!("  Dry-run: Would commit group '{}' with: {msg}", group.name);
                     } else {
-                        let group_paths: Vec<PathBuf> = group.paths.iter().map(PathBuf::from).collect();
+                        let group_paths: Vec<PathBuf> =
+                            group.paths.iter().map(PathBuf::from).collect();
                         repo.commit(&msg, Some(&group_paths))?;
                         println!("  ✓ Committed group '{}': {msg}", group.name);
                     }
