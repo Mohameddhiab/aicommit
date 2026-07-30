@@ -234,7 +234,7 @@ pub fn format_per_commit_markdown(scores: &[CommitScore]) -> String {
     out
 }
 
-/// Generate a React Doctor-inspired Web Dashboard HTML Report
+/// Generate a Git Doctor Web Dashboard HTML Report
 pub fn generate_html(report: &HistoryReport) -> String {
     let g = grade(report.overall_score);
     let (micro, small, med, large) = report.size_distribution();

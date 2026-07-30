@@ -19,7 +19,7 @@
 
 ## Why git-doctor?
 
-- **Analyze** — score commits on message quality, atomicity, size, and convention. Output CLI tables, JSON, or an interactive **React Doctor-inspired HTML Web Dashboard**.
+- **Analyze** — score commits on message quality, atomicity, size, and convention. Output CLI tables, JSON, or an **interactive HTML Web Dashboard**.
 - **Review** — audit staged code for security vulnerabilities (AWS keys, OpenAI tokens, SSH private keys) and debug artifacts (`console.log`, `debugger`, `TODO`/`FIXME`).
 - **Plan** — generate a structured plan with operations (Squash, Reword, Split) to fix issues.
 - **Apply** — safely apply the plan with automatic backup branches, dry-run mode, and remote detection.
