@@ -13,4 +13,5 @@ pub mod parser;
 pub mod plan;
 pub mod prompt;
 pub mod report;
+pub mod review;
 pub mod splitter;

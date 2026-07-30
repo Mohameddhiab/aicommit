@@ -11,25 +11,28 @@
 
 </div>
 
-**Git History Doctor — diagnose, fix, and maintain clean git history.**
+**Git History Doctor — diagnose, fix, review, and maintain clean git history.**
 
-> **diagnose → plan → apply → verify**
+> **diagnose → plan → apply → review → verify**
 
 ---
 
 ## Why git-doctor?
 
-- **Analyze** — score commits on message quality, atomicity, size, and convention. Detect WIP, vague, oversized, and mixed-concern commits.
-- **Plan** — generates a structured plan with operations (Squash, Reword, Split) to fix issues.
-- **Apply** — safely applies the plan with automatic backup branches, dry-run mode, and remote detection.
+- **Analyze** — score commits on message quality, atomicity, size, and convention. Output CLI tables, JSON, or an interactive **React Doctor-inspired HTML Web Dashboard**.
+- **Review** — audit staged code for security vulnerabilities (AWS keys, OpenAI tokens, SSH private keys) and debug artifacts (`console.log`, `debugger`, `TODO`/`FIXME`).
+- **Plan** — generate a structured plan with operations (Squash, Reword, Split) to fix issues.
+- **Apply** — safely apply the plan with automatic backup branches, dry-run mode, and remote detection.
 - **Check** — pre-push hook blocks WIP/vague commits before they reach remote.
 - **Commit** — generate well-structured Conventional Commits from staged changes (8 providers).
 
 ```bash
 # Before: vague history full of "fix", "wip", "stuff"
-doctor analyze          # score your last 10 commits
-doctor plan             # generate a cleanup plan
-doctor apply plan.json  # safe apply with backup
+doctor analyze                      # score your recent commits with terminal gauges
+doctor review                       # scan staged code for API key leaks and debug artifacts
+doctor analyze --format html --open # open interactive Web Dashboard in browser
+doctor plan                         # generate a cleanup plan
+doctor apply plan.json              # safe apply with backup
 ```
 
 ---
@@ -39,7 +42,8 @@ doctor apply plan.json  # safe apply with backup
 ```bash
 cargo install git-doctor
 cd your-repo
-doctor analyze                     # check health of last 10 commits
+doctor analyze --format html --open # check health with interactive Web Dashboard
+doctor review                       # scan staged changes before committing
 doctor commit                       # generate atomic commit from staged changes
 ```
 
@@ -47,21 +51,23 @@ doctor commit                       # generate atomic commit from staged changes
 
 ## Features
 
-### History Doctor
-| Command | Description |
-|---------|-------------|
-| `doctor analyze` | Score commits on quality, atomicity, size. Detect WIP/vague/mixed. Output text, JSON, or HTML. |
-| `doctor plan` | Generate a cleanup plan with Squash, Reword, Split operations. |
-| `doctor apply plan.json` | Safe apply with backup branch, dry-run, force flag, remote detection. |
-| `doctor check --pre-push` | Pre-push hook that blocks low-quality commits. |
-| `doctor init` | Install hooks and create default config. |
-| `doctor undo` | Undo the last commit (`git reset --soft HEAD~1`). |
+### History & Security Doctor
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `doctor analyze` | `doctor a`, `doctor diag` | Score commits on quality, atomicity, size. Terminal gauges & **Interactive Web Dashboard**. |
+| `doctor review` | `doctor r`, `doctor audit` | Scan staged changes for API key leaks (AWS, OpenAI, SSH) and debug code (`console.log`, `debugger`). |
+| `doctor plan` | `doctor p` | Generate a cleanup plan with Squash, Reword, Split operations. |
+| `doctor apply plan.json` | — | Safe apply with backup branch, dry-run, force flag, remote detection. |
+| `doctor check --pre-push` | — | Pre-push hook that blocks low-quality commits. |
+| `doctor completions <shell>` | — | Generate shell autocompletion scripts (`bash`, `zsh`, `fish`, `powershell`). |
+| `doctor init` | — | Install hooks and create default config. |
+| `doctor undo` | — | Undo the last commit (`git reset --soft HEAD~1`). |
 
 ### Commit Generator
 | Feature | Description |
 |---------|-------------|
 | Atomic commits | Groups files by directory, one Conventional Commit per group |
-| Interactive mode (`-i`) | Pick which groups to commit, edit messages |
+| Interactive mode (`-i`) | Pick which groups to commit, edit messages with colorful diff badges |
 | Auto-stage | `doctor commit` = `git add .` + commit; disable with `--no-stage` |
 | Dry-run (`-n`) | Preview generated messages without committing |
 | Multi-language | Generate messages in French, Spanish, German, etc. (`--lang fr`) |
@@ -101,23 +107,22 @@ Pre-built binaries for Linux (x86_64), macOS (x86_64 + aarch64), and Windows (x8
 ## Usage
 
 ```bash
-doctor                          # analyze, plan, apply, check, commit
-doctor analyze --commits 20     # analyze 20 commits
-doctor analyze --format html --open  # open HTML report in browser
-doctor plan --output plan.json  # save plan to file
-doctor apply plan.json          # safe apply with backup
-doctor apply plan.json --dry-run    # preview only
-doctor apply plan.json --force      # force even if pushed
-doctor check --pre-push         # run as pre-push hook
-doctor commit                   # generate atomic commit
-doctor commit --dry-run         # preview only
-doctor commit --interactive     # pick groups + edit messages
-doctor commit --single          # one commit, no splitting
-doctor commit --lang fr         # messages in French
+doctor                                    # analyze, plan, apply, check, commit
+doctor analyze --commits 20               # analyze 20 commits
+doctor analyze --format html --open        # open interactive Web Dashboard in browser
+doctor review                             # security audit staged code for secrets/debug code
+doctor plan --output plan.json            # save plan to file
+doctor apply plan.json                    # safe apply with backup
+doctor apply plan.json --dry-run          # preview only
+doctor check --pre-push                   # run as pre-push hook
+doctor commit                             # generate atomic commit
+doctor commit --interactive               # pick groups + edit messages
+doctor commit --single                    # one commit, no splitting
+doctor completions zsh > ~/.zsh/completions/_doctor # shell autocompletion
 doctor config --provider openai --api-key sk-...
-doctor undo                     # undo last commit
-doctor init                     # install hooks + config
-doctor uninstall                # remove hooks
+doctor undo                               # undo last commit
+doctor init                               # install hooks + config
+doctor uninstall                          # remove hooks
 ```
 
 <details>
@@ -184,23 +189,26 @@ model = "gpt-4o"
 
 ```
 src/
-├── main.rs          # CLI entry point (clap)
-├── analyze.rs       # History scoring and quality analysis
-├── apply.rs         # Safe plan application with backup
-├── config.rs        # Configuration loading and merging
-├── display.rs       # Boxed terminal output
-├── git.rs           # git2 wrapper: diff, add, commit, walk history
-├── hook.rs          # Pre-push hook management
-├── interactive.rs   # Interactive commit selection UI
-├── llm/             # AI providers
-├── parser.rs        # LLM response parsing
-├── plan.rs          # Cleanup plan generation
-├── prompt.rs        # Prompt construction
-├── report.rs        # Report output (text, JSON, HTML)
-├── splitter.rs      # Atomic commit grouping logic
+├── main.rs            # CLI entry point (clap + completions)
+├── analyze.rs         # History scoring and quality analysis
+├── apply.rs           # Safe plan application with backup
+├── banner.rs          # ASCII banner display
+├── config.rs          # Configuration loading and merging
+├── display.rs         # Terminal box frames, score gauges & spinners
+├── git.rs             # git2 wrapper: diff, add, commit, walk history
+├── hook.rs            # Pre-push hook management
+├── interactive.rs     # Interactive commit selection UI with diff badges
+├── llm/               # AI providers (Ollama, OpenAI, Anthropic, etc.)
+├── parser.rs          # LLM response parsing
+├── plan.rs            # Cleanup plan generation
+├── prompt.rs          # Prompt construction
+├── report.rs          # Report output (Text, JSON, Markdown, HTML Dashboard)
+├── review.rs          # Staged code security & quality audit scanner
+├── splitter.rs        # Atomic commit grouping logic
 tests/
-├── e2e_workflow.rs  # End-to-end workflow tests
-└── git_integration.rs # Git integration tests
+├── e2e_workflow.rs      # End-to-end workflow tests
+├── git_integration.rs   # Git integration tests
+└── review_integration.rs# Code review scanner tests
 ```
 
 </details>

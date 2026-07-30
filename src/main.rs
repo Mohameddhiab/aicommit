@@ -1,7 +1,9 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 use colored::Colorize;
 use git_doctor::{
-    analyze, apply, config, display, git, hook, interactive, llm, parser, plan, report, splitter,
+    analyze, apply, banner, config, display, git, hook, interactive, llm, plan, report, review,
+    splitter,
 };
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -21,6 +23,7 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum DoctorCommand {
     /// Analyze git history quality and produce a health score.
+    #[command(alias = "a", alias = "diag")]
     Analyze {
         /// Number of recent commits to analyze (default: 10).
         #[arg(long, default_value_t = 10)]
@@ -35,7 +38,11 @@ pub enum DoctorCommand {
         #[arg(long)]
         output: Option<String>,
     },
+    /// Audit staged code for security vulnerabilities (leaked keys/tokens) & debug leftovers.
+    #[command(alias = "r", alias = "audit")]
+    Review,
     /// Generate a cleanup plan based on analysis.
+    #[command(alias = "p")]
     Plan {
         /// Number of recent commits to analyze (default: 10).
         #[arg(long, default_value_t = 10)]
@@ -65,6 +72,7 @@ pub enum DoctorCommand {
         pre_push: bool,
     },
     /// Generate a well-structured commit message from staged changes.
+    #[command(alias = "c", alias = "ci")]
     Commit {
         /// Force a single commit (skip atomic split).
         #[arg(short = '1', long)]
@@ -93,6 +101,12 @@ pub enum DoctorCommand {
         /// Timeout in seconds (default: 120).
         #[arg(long, default_value_t = 120)]
         timeout: u64,
+    },
+    /// Generate shell autocompletion script (bash, zsh, fish, powershell, elvish).
+    Completions {
+        /// Target shell
+        #[arg(value_enum)]
+        shell: Shell,
     },
     /// Manage configuration.
     Config {
@@ -142,6 +156,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             open,
             output,
         } => run_analyze(commits, &format, open, output).await,
+        DoctorCommand::Review => run_review().await,
         DoctorCommand::Plan { commits, output } => run_plan(commits, output).await,
         DoctorCommand::Apply {
             plan,
@@ -177,6 +192,10 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             )
             .await
         }
+        DoctorCommand::Completions { shell } => {
+            run_completions(shell);
+            Ok(())
+        }
         DoctorCommand::Config {
             api_key,
             provider,
@@ -187,7 +206,6 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         DoctorCommand::Undo => {
             let repo = git::GitRepo::from_current_dir()?;
 
-            // Try doctor apply rollback first; fall back to simple undo
             if let Ok(tags) = repo.list_backup_tags() {
                 if !tags.is_empty() {
                     apply::undo_last_apply(&repo)?;
@@ -215,6 +233,7 @@ async fn run_analyze(
     open: bool,
     output: Option<String>,
 ) -> anyhow::Result<()> {
+    let spinner = display::create_spinner("Analyzing git repository history and commit scores...");
     let repo = git::GitRepo::from_current_dir()?;
     let history = repo.walk_history(commits)?;
 
@@ -238,6 +257,7 @@ async fn run_analyze(
         .collect();
 
     let report = analyze::build_report(scores);
+    spinner.finish_and_clear();
 
     let content: String = match format {
         "json" => report::format_json(&report),
@@ -247,7 +267,7 @@ async fn run_analyze(
                 let path = std::env::temp_dir().join("doctor-report.html");
                 std::fs::write(&path, &html)?;
                 open::that(&path).ok();
-                println!("  Report opened in browser");
+                println!("  ✓ Interactive Health Dashboard opened in browser ({})", path.display());
             }
             html
         }
@@ -263,7 +283,7 @@ async fn run_analyze(
     match output {
         Some(path) => {
             std::fs::write(&path, &content)?;
-            println!("  Report saved to {path}");
+            println!("  ✓ Health report saved to {path}");
         }
         None => println!("{content}"),
     }
@@ -271,7 +291,33 @@ async fn run_analyze(
     Ok(())
 }
 
+async fn run_review() -> anyhow::Result<()> {
+    let spinner = display::create_spinner("Scanning staged changes for security leaks & debug artifacts...");
+    let repo = git::GitRepo::from_current_dir()?;
+    let diff = repo.staged_diff()?;
+    spinner.finish_and_clear();
+
+    if diff.trim().is_empty() {
+        println!("  ℹ No staged changes found to review. Run `git add` first.");
+        return Ok(());
+    }
+
+    let report = review::run_code_review(&diff);
+    println!("{}", review::render_review_cli(&report));
+
+    if !report.passed {
+        anyhow::bail!("Code review failed due to critical security issues.");
+    }
+    Ok(())
+}
+
+fn run_completions(shell: Shell) {
+    let mut cmd = Cli::command();
+    generate(shell, &mut cmd, "doctor", &mut std::io::stdout());
+}
+
 async fn run_plan(commits: usize, output: Option<String>) -> anyhow::Result<()> {
+    let spinner = display::create_spinner("Generating git history optimization plan...");
     let repo = git::GitRepo::from_current_dir()?;
     let history = repo.walk_history(commits)?;
 
@@ -296,12 +342,13 @@ async fn run_plan(commits: usize, output: Option<String>) -> anyhow::Result<()> 
 
     let report = analyze::build_report(scores);
     let plan = plan::generate_plan(&report);
+    spinner.finish_and_clear();
 
     match output {
         Some(ref path) => {
             let json = serde_json::to_string_pretty(&plan)?;
             std::fs::write(path, &json)?;
-            println!("  Plan saved to {path}");
+            println!("  ✓ Cleanup plan saved to {path}");
         }
         None => {
             println!("{}", plan::format_plan_text(&plan));
@@ -311,27 +358,30 @@ async fn run_plan(commits: usize, output: Option<String>) -> anyhow::Result<()> 
     Ok(())
 }
 
-fn run_apply(plan_path: &str, confirm: bool, force: bool) -> anyhow::Result<()> {
-    let content = std::fs::read_to_string(plan_path)?;
-    let plan: plan::Plan = serde_json::from_str(&content)?;
+fn run_apply(plan_path: &str, should_apply: bool, force: bool) -> anyhow::Result<()> {
     let repo = git::GitRepo::from_current_dir()?;
+    let json = std::fs::read_to_string(plan_path)?;
+    let plan: plan::Plan = serde_json::from_str(&json)?;
 
-    let result = apply::apply_plan(&repo, &plan, confirm, force)?;
-
-    if confirm {
-        println!(
-            "  ✓ Applied {} operations (backup: {})",
-            result.operations_applied, result.backup_tag
-        );
+    if !should_apply {
+        println!("Dry-run mode (use --confirm to execute):\n");
+        println!("{}", plan::format_plan_text(&plan));
+        return Ok(());
     }
+
+    apply::apply_plan(&repo, &plan, should_apply, force)?;
+    display::box_start("Success");
+    display::box_line("Plan applied successfully!");
+    display::box_end();
+
     Ok(())
 }
 
 async fn run_check(pre_push: bool) -> anyhow::Result<()> {
+    let repo = git::GitRepo::from_current_dir()?;
+
     if pre_push {
-        let repo = git::GitRepo::from_current_dir()?;
-        let history = repo.walk_history(3)?;
-        let domains = vec!["root".to_string()];
+        let history = repo.walk_history(5)?;
         let scores: Vec<analyze::CommitScore> = history
             .iter()
             .map(
@@ -344,30 +394,46 @@ async fn run_check(pre_push: bool) -> anyhow::Result<()> {
                         *files,
                         *insertions,
                         *deletions,
-                        &domains,
+                        &["root".to_string()],
                     )
                 },
             )
             .collect();
+        let report = analyze::build_report(scores);
 
-        let mut blocked = 0;
-        for s in &scores {
-            if s.is_wip || s.is_vague {
-                println!(
-                    "  ✗ {} — \"{}\" ({})",
-                    &s.oid[..7],
-                    s.subject,
-                    if s.is_wip { "wip" } else { "vague" }
-                );
-                blocked += 1;
-            } else {
-                println!("  ✓ {} — \"{}\"", &s.oid[..7], s.subject);
-            }
+        let has_wip = report.commits.iter().any(|c| c.is_wip);
+        if has_wip {
+            eprintln!("{} Blocked push: WIP commits detected in recent history.", "✗".red().bold());
+            eprintln!("  Run `doctor analyze` for details or `doctor plan` to resolve.");
+            std::process::exit(1);
         }
+        println!("{} Pre-push check passed.", "✓".green().bold());
+        return Ok(());
+    }
 
-        if blocked > 0 {
-            anyhow::bail!("{blocked} commits blocked. Use --force to override.");
-        }
+    let history = repo.walk_history(10)?;
+    let scores: Vec<analyze::CommitScore> = history
+        .iter()
+        .map(
+            |(oid, subject, author, body, files, insertions, deletions)| {
+                analyze::score_commit(
+                    oid,
+                    subject,
+                    author,
+                    body,
+                    *files,
+                    *insertions,
+                    *deletions,
+                    &["root".to_string()],
+                )
+            },
+        )
+        .collect();
+    let report = analyze::build_report(scores);
+    println!("{}", report::format_text(&report));
+
+    if report.overall_score < 60 {
+        anyhow::bail!("History quality score is below threshold (60/100).");
     }
     Ok(())
 }
@@ -378,140 +444,130 @@ async fn run_commit(
     interactive: bool,
     dry_run: bool,
     no_stage: bool,
-    provider: Option<String>,
-    model: Option<String>,
-    lang: Option<String>,
-    api_key: Option<String>,
-    timeout: u64,
+    provider_override: Option<String>,
+    model_override: Option<String>,
+    lang_override: Option<String>,
+    api_key_override: Option<String>,
+    timeout_secs: u64,
 ) -> anyhow::Result<()> {
-    let cfg = config::load(
-        provider.clone(),
-        model.clone(),
-        lang.clone(),
-        api_key.clone(),
-        None,
-        timeout,
-    )?;
     let repo = git::GitRepo::from_current_dir()?;
 
-    if repo.is_operation_in_progress() {
-        anyhow::bail!("a merge, rebase, bisect, or cherry-pick is in progress");
+    if !no_stage {
+        let spinner = display::create_spinner("Staging updated files...");
+        repo.stage_all()?;
+        spinner.finish_and_clear();
     }
 
-    let mut diff = repo.staged_diff()?;
-    if diff.is_empty() && !no_stage {
-        repo.stage_all()?;
-        diff = repo.staged_diff()?;
-    }
-    if diff.is_empty() {
-        display::box_start("Info");
-        display::box_line("Nothing staged. Make changes and `git add` first.");
-        display::box_end();
+    if !repo.has_staged_changes()? {
+        println!("  ℹ No staged changes found. Use `git add` or run without `--no-stage`.");
         return Ok(());
     }
 
-    let provider = llm::build_provider(&cfg)?;
-    let line_count = diff.lines().count();
-    display::box_start(&format!(
-        "{} — {} lines to analyze",
-        provider.name(),
-        line_count
-    ));
+    let conf = config::load(
+        provider_override,
+        model_override,
+        lang_override,
+        api_key_override,
+        None,
+        timeout_secs,
+    )?;
 
-    if single || splitter::should_treat_as_single(&diff) {
-        let msg = llm::generate_commit_message(&provider, &diff, &cfg).await?;
-        let parsed = parser::parse_commit_message(&msg)?;
-        let formatted = parsed.format_with_template(&cfg.commit_template);
-        let final_msg = if interactive {
-            interactive::edit_message(&formatted)?
-        } else {
-            formatted
-        };
-        do_commit(&repo, &final_msg, None, dry_run)?;
+    let provider = llm::build_provider(&conf)?;
+
+    let spinner = display::create_spinner("Grouping staged changes into atomic commits...");
+    let diff = repo.staged_diff()?;
+    let groups = if single {
+        let files = repo.staged_files()?;
+        vec![splitter::Group {
+            name: "all".to_string(),
+            paths: files.iter().map(|p| p.to_string_lossy().to_string()).collect(),
+            file_count: files.len(),
+            insertions: 0,
+            deletions: 0,
+        }]
     } else {
-        let groups =
-            splitter::group_by_directory(&diff, cfg.commit_max_commits, &cfg.exclude_patterns)?;
-        if interactive {
-            let mut msgs = Vec::new();
-            for group in &groups {
-                let gdiff = repo.diff_for_group(group)?;
-                display::box_line(&format!(
-                    "◉ Group '{}' — {} lines",
-                    group.name,
-                    gdiff.lines().count()
-                ));
-                let msg = llm::generate_commit_message(&provider, &gdiff, &cfg).await?;
-                msgs.push(msg);
-            }
-            display::box_end();
-            match interactive::select_commits(&groups, &msgs) {
-                interactive::SelectResult::Some(selected) => {
-                    for &idx in &selected {
-                        let parsed = parser::parse_commit_message(&msgs[idx])?;
-                        let final_msg = interactive::edit_message(
-                            &parsed.format_with_template(&cfg.commit_template),
-                        )?;
-                        let paths: Vec<PathBuf> =
-                            groups[idx].paths.iter().map(PathBuf::from).collect();
-                        do_commit(&repo, &final_msg, Some(&paths), dry_run)?;
+        splitter::group_by_directory(&diff, 5, &[])?
+    };
+    spinner.finish_and_clear();
+
+    banner::maybe_print();
+
+    let mut msgs = Vec::new();
+    for group in &groups {
+        let group_spinner = display::create_spinner(&format!(
+            "Generating AI commit message for group '{}' ({} provider)...",
+            group.name,
+            provider.name()
+        ));
+        let group_diff = repo.diff_for_group(group)?;
+        let msg = llm::generate_commit_message(&provider, &group_diff, &conf).await?;
+
+        group_spinner.finish_and_clear();
+        msgs.push(msg);
+    }
+
+    if interactive {
+        match interactive::select_commits(&groups, &msgs) {
+            interactive::SelectResult::Some(selected_indices) => {
+                for &idx in &selected_indices {
+                    let group = &groups[idx];
+                    let mut msg = msgs[idx].clone();
+                    msg = interactive::edit_message(&msg)?;
+
+                    if dry_run {
+                        println!("  Dry-run: Would commit group '{}' with: {msg}", group.name);
+                    } else {
+                        let group_paths: Vec<PathBuf> = group.paths.iter().map(PathBuf::from).collect();
+                        repo.commit(&msg, Some(&group_paths))?;
+                        println!("  ✓ Committed group '{}': {msg}", group.name);
                     }
                 }
-                interactive::SelectResult::None | interactive::SelectResult::Cancelled => {
-                    display::box_line("No commits selected — exiting.");
-                }
             }
-        } else {
-            for group in &groups {
-                let gdiff = repo.diff_for_group(group)?;
-                display::box_line(&format!(
-                    "◉ Group '{}' — {} lines",
-                    group.name,
-                    gdiff.lines().count()
-                ));
-                let msg = llm::generate_commit_message(&provider, &gdiff, &cfg).await?;
-                let parsed = parser::parse_commit_message(&msg)?;
-                let final_msg = parsed.format_with_template(&cfg.commit_template);
-                let paths: Vec<PathBuf> = group.paths.iter().map(PathBuf::from).collect();
-                do_commit(&repo, &final_msg, Some(&paths), dry_run)?;
+            interactive::SelectResult::None => {
+                println!("  No commits selected.");
+            }
+            interactive::SelectResult::Cancelled => {
+                println!("  Commit operation cancelled.");
+            }
+        }
+    } else {
+        for (group, msg) in groups.iter().zip(msgs.iter()) {
+            if dry_run {
+                println!("  Dry-run: Would commit group '{}' with: {msg}", group.name);
+            } else {
+                let group_paths: Vec<PathBuf> = group.paths.iter().map(PathBuf::from).collect();
+                repo.commit(msg, Some(&group_paths))?;
+                println!("  ✓ Committed group '{}': {msg}", group.name);
             }
         }
     }
-    display::box_end();
-    Ok(())
-}
 
-fn do_commit(
-    repo: &git::GitRepo,
-    message: &str,
-    paths: Option<&[PathBuf]>,
-    dry_run: bool,
-) -> anyhow::Result<()> {
-    if dry_run {
-        println!("  {} Would commit: {message}", "✔".green());
-    } else {
-        repo.commit(message, paths)?;
-        println!("  {} Committed: {message}", "✔".green());
-    }
     Ok(())
 }
 
 async fn run_init() -> anyhow::Result<()> {
     let repo = git::GitRepo::from_current_dir()?;
-    let git_dir = repo.git_dir();
+    let spinner = display::create_spinner("Installing doctor git hooks and generating config...");
+    hook::install_pre_push_hook(repo.repo.path())?;
+    spinner.finish_and_clear();
 
-    display::box_start("doctor init");
-    display::box_line("Setting up git-doctor...");
+    display::box_start("Init Complete");
+    display::box_line("Git Doctor initialized successfully!");
+    display::box_line("• Pre-push hook installed (.git/hooks/pre-push)");
     display::box_end();
 
-    hook::install_pre_push_hook(&git_dir)?;
-    println!("  ✓ git-doctor initialized");
     Ok(())
 }
 
 async fn run_uninstall() -> anyhow::Result<()> {
     let repo = git::GitRepo::from_current_dir()?;
-    let git_dir = repo.git_dir();
-    hook::uninstall_hook(&git_dir)?;
-    println!("  ✓ git-doctor uninstalled");
+    let spinner = display::create_spinner("Removing doctor git hooks...");
+    hook::uninstall_hook(repo.repo.path())?;
+    spinner.finish_and_clear();
+
+    display::box_start("Uninstall Complete");
+    display::box_line("Doctor hooks uninstalled.");
+    display::box_end();
+
     Ok(())
 }

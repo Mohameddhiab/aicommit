@@ -288,6 +288,54 @@ pub fn build_report(commits: Vec<CommitScore>) -> HistoryReport {
     }
 }
 
+impl HistoryReport {
+    pub fn total_commits(&self) -> usize {
+        self.commits.len()
+    }
+
+    pub fn total_insertions(&self) -> usize {
+        self.commits.iter().map(|c| c.insertions).sum()
+    }
+
+    pub fn total_deletions(&self) -> usize {
+        self.commits.iter().map(|c| c.deletions).sum()
+    }
+
+    pub fn size_distribution(&self) -> (usize, usize, usize, usize) {
+        let mut micro = 0;
+        let mut small = 0;
+        let mut medium = 0;
+        let mut large = 0;
+        for c in &self.commits {
+            let total = c.insertions + c.deletions;
+            if total < 50 {
+                micro += 1;
+            } else if total <= 200 {
+                small += 1;
+            } else if total <= 500 {
+                medium += 1;
+            } else {
+                large += 1;
+            }
+        }
+        (micro, small, medium, large)
+    }
+
+    pub fn issue_counts(&self) -> (usize, usize, usize) {
+        let mut crit = 0;
+        let mut warn = 0;
+        let mut info = 0;
+        for issue in &self.issues {
+            match issue.severity {
+                Severity::Critical => crit += 1,
+                Severity::Warning => warn += 1,
+                Severity::Info => info += 1,
+            }
+        }
+        (crit, warn, info)
+    }
+}
+
 fn count_domains(_subject: &str) -> usize {
     2
 }

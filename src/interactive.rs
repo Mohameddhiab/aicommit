@@ -2,6 +2,7 @@
 
 use crate::splitter::Group;
 use anyhow::Result;
+use colored::Colorize;
 
 /// Result of the multi-select commit picker.
 #[derive(Debug)]
@@ -21,14 +22,18 @@ pub fn select_commits(groups: &[Group], msgs: &[String]) -> SelectResult {
         .zip(msgs.iter())
         .map(|(g, m)| {
             format!(
-                "[{}]  {m}  ({} files, +{} -{})",
-                g.name, g.file_count, g.insertions, g.deletions
+                "📦 {:<15} 💬 {:<45} ({:>2} files, {}{})",
+                g.name.bold().cyan(),
+                m,
+                g.file_count,
+                format!("+{}", g.insertions).green(),
+                format!(" -{}", g.deletions).red()
             )
         })
         .collect();
 
     let selection = dialoguer::MultiSelect::new()
-        .with_prompt("Select commits to apply  [space: toggle, enter: confirm, esc: cancel]")
+        .with_prompt("Select atomic commits to apply [space: toggle, enter: confirm, esc: cancel]")
         .items(&items)
         .interact_opt();
 
@@ -42,7 +47,7 @@ pub fn select_commits(groups: &[Group], msgs: &[String]) -> SelectResult {
 /// Let the user edit a commit message before committing.
 pub fn edit_message(msg: &str) -> Result<String> {
     let edited: String = dialoguer::Input::new()
-        .with_prompt("Commit message")
+        .with_prompt("✍️ Edit commit message")
         .with_initial_text(msg)
         .interact_text()?;
     Ok(edited)
